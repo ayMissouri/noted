@@ -20,6 +20,14 @@ export interface Note extends NoteListItem {
   body: string
 }
 
+export interface User {
+  id: string
+  username: string
+  email: string | null
+  is_admin: boolean
+  created_at: string
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -54,6 +62,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  setupStatus: () =>
+    request<{ needs_setup: boolean }>('/api/v1/setup').then((r) => r.needs_setup),
+
+  setup: (username: string, email: string, password: string) =>
+    request<User>('/api/v1/setup', {
+      method: 'POST',
+      body: JSON.stringify({ username, email, password }),
+    }),
+
   vaults: () => request<{ vaults: Vault[] }>('/api/v1/vaults').then((r) => r.vaults),
 
   notes: (vaultId: string) =>

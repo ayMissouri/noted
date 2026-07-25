@@ -1,13 +1,28 @@
 <script lang="ts">
   import { api, ApiError, type Note, type NoteListItem } from './lib/api'
   import Editor from './lib/Editor.svelte'
+  import Setup from './lib/Setup.svelte'
 
+  let screen = $state<'loading' | 'setup' | 'app'>('loading')
   let vaultId = $state<string | null>(null)
   let vaultName = $state('')
   let notes = $state<NoteListItem[]>([])
   let current = $state<Note | null>(null)
   let newName = $state('')
   let error = $state('')
+
+  async function boot() {
+    try {
+      if (await api.setupStatus()) {
+        screen = 'setup'
+        return
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+    await load()
+    screen = 'app'
+  }
 
   async function load() {
     try {
@@ -20,7 +35,12 @@
       error = e instanceof Error ? e.message : String(e)
     }
   }
-  load()
+  boot()
+
+  async function onSetupComplete() {
+    await load()
+    screen = 'app'
+  }
 
   async function open(id: string) {
     try {
@@ -56,6 +76,9 @@
   }
 </script>
 
+{#if screen === 'setup'}
+  <Setup oncomplete={onSetupComplete} />
+{:else if screen === 'app'}
 <div class="layout">
   <aside>
     <h1>noted</h1>
@@ -87,6 +110,7 @@
     {/if}
   </main>
 </div>
+{/if}
 
 <style>
   .layout {
