@@ -17,6 +17,8 @@ func (s *Server) routes() {
 	api.PUT("/notes/:id", s.handleUpdateNote)
 	api.GET("/notes/:id/html", s.handleNoteHTML)
 	api.POST("/render", s.handleRender)
+
+	s.echo.RouteNotFound("/*", s.spaHandler())
 }
 
 func (s *Server) handleHealthz(c *echo.Context) error {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ahmedmissouri/noted/internal/storage"
+	"github.com/ayMissouri/noted/internal/storage"
 )
 
 func testService(t *testing.T) (*Service, string) {

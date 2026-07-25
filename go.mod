@@ -1,4 +1,4 @@
-module github.com/ahmedmissouri/noted
+module github.com/ayMissouri/noted
 
 go 1.26.0
 

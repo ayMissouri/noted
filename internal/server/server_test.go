@@ -9,13 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/ahmedmissouri/noted/internal/config"
-	"github.com/ahmedmissouri/noted/internal/markdown"
-	"github.com/ahmedmissouri/noted/internal/notes"
-	"github.com/ahmedmissouri/noted/internal/storage"
+	"github.com/ayMissouri/noted/internal/config"
+	"github.com/ayMissouri/noted/internal/markdown"
+	"github.com/ayMissouri/noted/internal/notes"
+	"github.com/ayMissouri/noted/internal/storage"
 )
 
 func testServer(t *testing.T) (*Server, string) {
@@ -38,7 +39,11 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatalf("config.Load: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	return New(cfg, logger, svc, markdown.NewRenderer()), vault.ID
+	assets := fstest.MapFS{
+		"index.html":     &fstest.MapFile{Data: []byte("<!doctype html><title>noted test</title>")},
+		"assets/app.js":  &fstest.MapFile{Data: []byte("console.log('app')")},
+	}
+	return New(cfg, logger, svc, markdown.NewRenderer(), assets), vault.ID
 }
 
 func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
@@ -78,17 +83,6 @@ func TestHealthz(t *testing.T) {
 	}
 	if rec.Header().Get(echo.HeaderXRequestID) == "" {
 		t.Error("response has no request id header")
-	}
-}
-
-func TestUnknownRouteIsJSON404(t *testing.T) {
-	s, _ := testServer(t)
-	rec := do(t, s, http.MethodGet, "/nope", "")
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", rec.Code)
-	}
-	if got := errCode(t, rec); got != "not_found" {
-		t.Errorf("code = %q, want not_found", got)
 	}
 }
 
@@ -183,6 +177,39 @@ func TestAPIErrors(t *testing.T) {
 				t.Errorf("code = %q, want %q", got, tt.wantCode)
 			}
 		})
+	}
+}
+
+func TestStaticApp(t *testing.T) {
+	s, _ := testServer(t)
+
+	rec := do(t, s, http.MethodGet, "/", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "noted test") {
+		t.Errorf("GET / = %d %q, want the app shell", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, s, http.MethodGet, "/assets/app.js", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "console.log") {
+		t.Errorf("GET asset = %d, want the file", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("asset Cache-Control = %q, want immutable", cc)
+	}
+
+	rec = do(t, s, http.MethodGet, "/notes/some-app-route", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "noted test") {
+		t.Errorf("SPA fallback = %d %q, want index.html", rec.Code, rec.Body.String())
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("fallback Cache-Control = %q, want no-cache", cc)
+	}
+
+	rec = do(t, s, http.MethodGet, "/api/v1/nope", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unknown API route = %d, want JSON 404, got body %q", rec.Code, rec.Body.String())
+	}
+	if got := errCode(t, rec); got != "not_found" {
+		t.Errorf("code = %q, want not_found", got)
 	}
 }
 

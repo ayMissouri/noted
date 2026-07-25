@@ -1,10 +1,10 @@
-// Package server owns the HTTP edge. Echo does not leak past this package.
 package server
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,9 +13,9 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
-	"github.com/ahmedmissouri/noted/internal/config"
-	"github.com/ahmedmissouri/noted/internal/markdown"
-	"github.com/ahmedmissouri/noted/internal/notes"
+	"github.com/ayMissouri/noted/internal/config"
+	"github.com/ayMissouri/noted/internal/markdown"
+	"github.com/ayMissouri/noted/internal/notes"
 )
 
 const maxBodyBytes = 10 << 20
@@ -26,11 +26,12 @@ type Server struct {
 	logger *slog.Logger
 	notes  *notes.Service
 	render *markdown.Renderer
+	assets fs.FS
 }
 
-func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, renderer *markdown.Renderer) *Server {
+func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, renderer *markdown.Renderer, assets fs.FS) *Server {
 	e := echo.New()
-	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc, render: renderer}
+	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc, render: renderer, assets: assets}
 	e.HTTPErrorHandler = s.handleError
 	e.Use(middleware.RequestID())
 	e.Use(s.requestLogger())

@@ -5,8 +5,8 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/ahmedmissouri/noted/internal/notes"
-	"github.com/ahmedmissouri/noted/internal/storage/db"
+	"github.com/ayMissouri/noted/internal/notes"
+	"github.com/ayMissouri/noted/internal/storage/db"
 )
 
 type vaultJSON struct {

@@ -12,7 +12,7 @@ import (
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/ahmedmissouri/noted/internal/storage/db"
+	"github.com/ayMissouri/noted/internal/storage/db"
 )
 
 var (

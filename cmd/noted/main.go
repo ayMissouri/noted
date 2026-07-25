@@ -9,11 +9,12 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/ahmedmissouri/noted/internal/config"
-	"github.com/ahmedmissouri/noted/internal/markdown"
-	"github.com/ahmedmissouri/noted/internal/notes"
-	"github.com/ahmedmissouri/noted/internal/server"
-	"github.com/ahmedmissouri/noted/internal/storage"
+	"github.com/ayMissouri/noted/internal/config"
+	"github.com/ayMissouri/noted/internal/markdown"
+	"github.com/ayMissouri/noted/internal/notes"
+	"github.com/ayMissouri/noted/internal/server"
+	"github.com/ayMissouri/noted/internal/storage"
+	"github.com/ayMissouri/noted/web"
 )
 
 func main() {
@@ -61,7 +62,7 @@ func run(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(cfg, logger, notesSvc, markdown.NewRenderer())
+	srv := server.New(cfg, logger, notesSvc, markdown.NewRenderer(), web.Dist())
 	return srv.Run(ctx)
 }
 
