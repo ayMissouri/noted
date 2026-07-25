@@ -1,10 +1,10 @@
-// Command noted is the note server. main stays thin: parse arguments,
-// wire dependencies, run. Everything real lives under internal/.
 package main
 
 import (
 	"fmt"
 	"os"
+
+	"github.com/ahmedmissouri/noted/internal/config"
 )
 
 func main() {
@@ -16,6 +16,11 @@ func main() {
 
 func run(args []string) error {
 	_ = args
-	fmt.Println("noted: nothing to serve yet; this binary grows during phase 0")
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("noted: config ok (data dir %q, listen %q); nothing to serve yet\n",
+		cfg.DataDir, cfg.ListenAddr)
 	return nil
 }
