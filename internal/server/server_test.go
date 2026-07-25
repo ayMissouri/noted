@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/markdown"
 	"github.com/ahmedmissouri/noted/internal/notes"
 	"github.com/ahmedmissouri/noted/internal/storage"
 )
@@ -37,7 +38,7 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatalf("config.Load: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	return New(cfg, logger, svc), vault.ID
+	return New(cfg, logger, svc, markdown.NewRenderer()), vault.ID
 }
 
 func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
@@ -182,6 +183,49 @@ func TestAPIErrors(t *testing.T) {
 				t.Errorf("code = %q, want %q", got, tt.wantCode)
 			}
 		})
+	}
+}
+
+func TestRenderPreview(t *testing.T) {
+	s, _ := testServer(t)
+	rec := do(t, s, http.MethodPost, "/api/v1/render", `{"markdown":"| a |\n| - |\n| b |\n\n<script>x</script>"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	out := decode[map[string]string](t, rec)
+	if !strings.Contains(out["html"], "<table>") {
+		t.Errorf("html = %q, want a table", out["html"])
+	}
+	if strings.Contains(out["html"], "<script") {
+		t.Errorf("html = %q leaks raw HTML", out["html"])
+	}
+
+	rec = do(t, s, http.MethodPost, "/api/v1/render", `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing markdown: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestNoteHTML(t *testing.T) {
+	s, vaultID := testServer(t)
+	rec := do(t, s, http.MethodPost, "/api/v1/vaults/"+vaultID+"/notes", `{"name":"Doc","body":"---\ntitle: x\n---\n# Rendered\n"}`)
+	created := decode[noteJSON](t, rec)
+
+	rec = do(t, s, http.MethodGet, "/api/v1/notes/"+created.ID+"/html", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	out := decode[map[string]any](t, rec)
+	html, _ := out["html"].(string)
+	if !strings.Contains(html, `<h1 id="rendered">Rendered</h1>`) {
+		t.Errorf("html = %q, want rendered heading", html)
+	}
+	if strings.Contains(html, "title: x") {
+		t.Errorf("html = %q leaks frontmatter", html)
+	}
+
+	if rec := do(t, s, http.MethodGet, "/api/v1/notes/none/html", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("missing note: status = %d, want 404", rec.Code)
 	}
 }
 

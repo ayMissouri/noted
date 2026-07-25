@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/markdown"
 	"github.com/ahmedmissouri/noted/internal/notes"
 )
 
@@ -24,11 +25,12 @@ type Server struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	notes  *notes.Service
+	render *markdown.Renderer
 }
 
-func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service) *Server {
+func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, renderer *markdown.Renderer) *Server {
 	e := echo.New()
-	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc}
+	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc, render: renderer}
 	e.HTTPErrorHandler = s.handleError
 	e.Use(middleware.RequestID())
 	e.Use(s.requestLogger())

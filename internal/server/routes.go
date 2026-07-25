@@ -15,6 +15,8 @@ func (s *Server) routes() {
 	api.POST("/vaults/:vaultID/notes", s.handleCreateNote)
 	api.GET("/notes/:id", s.handleGetNote)
 	api.PUT("/notes/:id", s.handleUpdateNote)
+	api.GET("/notes/:id/html", s.handleNoteHTML)
+	api.POST("/render", s.handleRender)
 }
 
 func (s *Server) handleHealthz(c *echo.Context) error {

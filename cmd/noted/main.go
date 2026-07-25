@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/markdown"
 	"github.com/ahmedmissouri/noted/internal/notes"
 	"github.com/ahmedmissouri/noted/internal/server"
 	"github.com/ahmedmissouri/noted/internal/storage"
@@ -60,7 +61,7 @@ func run(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(cfg, logger, notesSvc)
+	srv := server.New(cfg, logger, notesSvc, markdown.NewRenderer())
 	return srv.Run(ctx)
 }
 
