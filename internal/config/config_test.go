@@ -30,6 +30,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogFormat != "text" {
 		t.Errorf("LogFormat = %q, want %q", cfg.LogFormat, "text")
 	}
+	if !cfg.AutoMigrate {
+		t.Error("AutoMigrate = false, want true")
+	}
 }
 
 func TestLoadValidValues(t *testing.T) {
@@ -80,6 +83,15 @@ func TestLoadValidValues(t *testing.T) {
 			check: func(t *testing.T, cfg *Config) {
 				if cfg.BaseURL == nil || cfg.BaseURL.String() != "https://notes.example.com" {
 					t.Errorf("BaseURL = %v, want https://notes.example.com", cfg.BaseURL)
+				}
+			},
+		},
+		{
+			name: "auto migrate off",
+			env:  map[string]string{"NOTED_AUTO_MIGRATE": "false"},
+			check: func(t *testing.T, cfg *Config) {
+				if cfg.AutoMigrate {
+					t.Error("AutoMigrate = true, want false")
 				}
 			},
 		},
@@ -137,6 +149,11 @@ func TestLoadInvalidValues(t *testing.T) {
 			name:   "bad PORT",
 			env:    map[string]string{"PORT": "web"},
 			wantIn: "PORT",
+		},
+		{
+			name:   "bad auto migrate",
+			env:    map[string]string{"NOTED_AUTO_MIGRATE": "maybe"},
+			wantIn: "NOTED_AUTO_MIGRATE",
 		},
 		{
 			name:   "base URL with path",

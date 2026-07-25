@@ -18,6 +18,8 @@ type Config struct {
 	BaseURL *url.URL
 	LogLevel slog.Level
 	LogFormat string
+	// AutoMigrate applies pending migrations on boot.
+	AutoMigrate bool
 }
 
 const (
@@ -30,8 +32,9 @@ func Load(getenv func(string) string) (*Config, error) {
 	cfg := &Config{
 		DataDir:    defaultDataDir,
 		ListenAddr: defaultListenAddr,
-		LogLevel:   slog.LevelInfo,
-		LogFormat:  defaultLogFormat,
+		LogLevel:    slog.LevelInfo,
+		LogFormat:   defaultLogFormat,
+		AutoMigrate: true,
 	}
 	var errs []error
 	fail := func(variable, got, want string) {
@@ -80,6 +83,15 @@ func Load(getenv func(string) string) (*Config, error) {
 			cfg.LogFormat = strings.ToLower(v)
 		default:
 			fail("NOTED_LOG_FORMAT", v, `"text" or "json"`)
+		}
+	}
+
+	if v := getenv("NOTED_AUTO_MIGRATE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			fail("NOTED_AUTO_MIGRATE", v, "true or false")
+		} else {
+			cfg.AutoMigrate = b
 		}
 	}
 
