@@ -1,3 +1,4 @@
+// Package server owns the HTTP edge. Echo does not leak past this package.
 package server
 
 import (
@@ -6,27 +7,33 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/notes"
 )
+
+const maxBodyBytes = 10 << 20
 
 type Server struct {
 	echo   *echo.Echo
 	cfg    *config.Config
 	logger *slog.Logger
+	notes  *notes.Service
 }
 
-func New(cfg *config.Config, logger *slog.Logger) *Server {
+func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service) *Server {
 	e := echo.New()
-	s := &Server{echo: e, cfg: cfg, logger: logger}
+	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc}
 	e.HTTPErrorHandler = s.handleError
 	e.Use(middleware.RequestID())
 	e.Use(s.requestLogger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.BodyLimit(maxBodyBytes))
 	s.routes()
 	return s
 }
@@ -44,27 +51,62 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
+var domainErrors = []struct {
+	err    error
+	status int
+	code   string
+}{
+	{notes.ErrNotFound, http.StatusNotFound, "not_found"},
+	{notes.ErrVaultNotFound, http.StatusNotFound, "vault_not_found"},
+	{notes.ErrVersionConflict, http.StatusConflict, "version_conflict"},
+	{notes.ErrNameTaken, http.StatusConflict, "name_taken"},
+	{notes.ErrInvalidName, http.StatusUnprocessableEntity, "invalid_name"},
+}
+
+type errorBody struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 func (s *Server) handleError(c *echo.Context, err error) {
 	if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
 		return
 	}
-	code := http.StatusInternalServerError
-	var sc echo.HTTPStatusCoder
-	if errors.As(err, &sc) {
-		code = sc.StatusCode()
+	status := http.StatusInternalServerError
+	code := "internal"
+	msg := "internal server error"
+
+	matched := false
+	for _, d := range domainErrors {
+		if errors.Is(err, d.err) {
+			status, code, msg = d.status, d.code, err.Error()
+			matched = true
+			break
+		}
 	}
-	msg := http.StatusText(code)
-	var he *echo.HTTPError
-	if errors.As(err, &he) && he.Message != "" {
-		msg = he.Message
+	if !matched {
+		var sc echo.HTTPStatusCoder
+		if errors.As(err, &sc) {
+			status = sc.StatusCode()
+			code = codeForStatus(status)
+			msg = http.StatusText(status)
+			var he *echo.HTTPError
+			if errors.As(err, &he) && he.Message != "" {
+				msg = he.Message
+			}
+		}
 	}
-	if code >= 500 {
-		msg = "internal server error"
+	if status >= 500 {
+		code, msg = "internal", "internal server error"
 		s.logger.Error("request failed", "error", err, "request_id", requestID(c))
 	}
-	if werr := c.JSON(code, map[string]string{"error": msg}); werr != nil {
+	if werr := c.JSON(status, map[string]errorBody{"error": {Code: code, Message: msg}}); werr != nil {
 		s.logger.Error("writing error response failed", "error", werr, "request_id", requestID(c))
 	}
+}
+
+func codeForStatus(status int) string {
+	return strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
 }
 
 func (s *Server) requestLogger() echo.MiddlewareFunc {

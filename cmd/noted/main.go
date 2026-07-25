@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/notes"
 	"github.com/ahmedmissouri/noted/internal/server"
 	"github.com/ahmedmissouri/noted/internal/storage"
 )
@@ -50,9 +51,16 @@ func run(args []string) error {
 	}
 	logger.Info("database ready", "path", dbPath)
 
+	notesSvc := notes.NewService(db)
+	vault, err := notesSvc.EnsureDefaultVault(context.Background())
+	if err != nil {
+		return err
+	}
+	logger.Info("vault ready", "id", vault.ID, "name", vault.Name)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(cfg, logger)
+	srv := server.New(cfg, logger, notesSvc)
 	return srv.Run(ctx)
 }
 

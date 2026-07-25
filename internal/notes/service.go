@@ -99,6 +99,14 @@ func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 	return db.Vault{ID: vaultID, Name: "Notes", CreatedAt: now, UpdatedAt: now, ChangeSeq: seq}, nil
 }
 
+func (s *Service) Vaults(ctx context.Context) ([]db.Vault, error) {
+	vaults, err := s.q.ListVaults(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list vaults: %w", err)
+	}
+	return vaults, nil
+}
+
 func (s *Service) List(ctx context.Context, vaultID string) ([]db.ListNotesRow, error) {
 	rows, err := s.q.ListNotes(ctx, vaultID)
 	if err != nil {
