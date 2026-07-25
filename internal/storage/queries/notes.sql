@@ -17,6 +17,8 @@ UPDATE notes
 SET body = ?, version = version + 1, updated_at = ?, updated_by_kind = ?, updated_by_user = ?, updated_by_token = ?, change_seq = ?
 WHERE id = ? AND version = ? AND deleted_at IS NULL;
 
--- name: InsertNoteVersion :exec
+-- name: SnapshotNoteVersion :exec
 INSERT INTO note_versions (note_id, version, body, name, folder_path, saved_at, actor_kind, actor_user, actor_token)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+SELECT n.id, n.version, n.body, n.name, f.path, ?, ?, ?, ?
+FROM notes n JOIN folders f ON f.id = n.folder_id
+WHERE n.id = ?;

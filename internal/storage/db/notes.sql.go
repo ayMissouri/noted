@@ -72,38 +72,6 @@ func (q *Queries) GetNote(ctx context.Context, id string) (Note, error) {
 	return i, err
 }
 
-const insertNoteVersion = `-- name: InsertNoteVersion :exec
-INSERT INTO note_versions (note_id, version, body, name, folder_path, saved_at, actor_kind, actor_user, actor_token)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-type InsertNoteVersionParams struct {
-	NoteID     string
-	Version    int64
-	Body       string
-	Name       string
-	FolderPath string
-	SavedAt    string
-	ActorKind  string
-	ActorUser  *string
-	ActorToken *string
-}
-
-func (q *Queries) InsertNoteVersion(ctx context.Context, arg InsertNoteVersionParams) error {
-	_, err := q.db.ExecContext(ctx, insertNoteVersion,
-		arg.NoteID,
-		arg.Version,
-		arg.Body,
-		arg.Name,
-		arg.FolderPath,
-		arg.SavedAt,
-		arg.ActorKind,
-		arg.ActorUser,
-		arg.ActorToken,
-	)
-	return err
-}
-
 const listNotes = `-- name: ListNotes :many
 SELECT id, vault_id, folder_id, name, version, created_at, updated_at, change_seq
 FROM notes
@@ -152,6 +120,32 @@ func (q *Queries) ListNotes(ctx context.Context, vaultID string) ([]ListNotesRow
 		return nil, err
 	}
 	return items, nil
+}
+
+const snapshotNoteVersion = `-- name: SnapshotNoteVersion :exec
+INSERT INTO note_versions (note_id, version, body, name, folder_path, saved_at, actor_kind, actor_user, actor_token)
+SELECT n.id, n.version, n.body, n.name, f.path, ?, ?, ?, ?
+FROM notes n JOIN folders f ON f.id = n.folder_id
+WHERE n.id = ?
+`
+
+type SnapshotNoteVersionParams struct {
+	SavedAt    string
+	ActorKind  string
+	ActorUser  *string
+	ActorToken *string
+	ID         string
+}
+
+func (q *Queries) SnapshotNoteVersion(ctx context.Context, arg SnapshotNoteVersionParams) error {
+	_, err := q.db.ExecContext(ctx, snapshotNoteVersion,
+		arg.SavedAt,
+		arg.ActorKind,
+		arg.ActorUser,
+		arg.ActorToken,
+		arg.ID,
+	)
+	return err
 }
 
 const updateNoteBody = `-- name: UpdateNoteBody :execrows
