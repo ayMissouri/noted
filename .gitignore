@@ -1,0 +1,20 @@
+# Binaries and build output
+/noted
+/noted.exe
+/dist/
+
+# Local data and secrets
+/data/
+.env
+.env.*
+
+# Web client tooling (built assets in web/dist are committed deliberately)
+node_modules/
+
+# Test and tool output
+coverage.out
+*.test
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
