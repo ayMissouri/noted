@@ -1,0 +1,4 @@
+# you can replace "80" with your domain.
+:80 {
+	reverse_proxy noted:6683
+}

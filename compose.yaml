@@ -1,0 +1,33 @@
+services:
+  noted:
+    build: .
+    restart: unless-stopped
+    environment:
+      NOTED_LOG_FORMAT: json
+    volumes:
+      - noted-data:/data
+    expose:
+      - "6683"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6683/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - noted
+
+volumes:
+  noted-data:
+  caddy-data:
+  caddy-config:

@@ -6,3 +6,5 @@ web/node_modules
 *.log
 README.md
 docs
+compose.yaml
+deploy
