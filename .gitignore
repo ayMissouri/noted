@@ -3,6 +3,9 @@
 *.exe
 /dist/
 
+# Built client assets; this line is removed when we start committing them
+/web/dist/
+
 # Local data and secrets
 /data/
 .env

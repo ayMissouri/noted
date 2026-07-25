@@ -1,0 +1,18 @@
+:root {
+  color-scheme: light dark;
+  --ok: #2e7d32;
+  --err: #c62828;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ok: #81c784;
+    --err: #e57373;
+  }
+}
+
+body {
+  margin: 0;
+}
