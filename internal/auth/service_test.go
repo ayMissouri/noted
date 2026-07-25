@@ -101,6 +101,37 @@ func TestCreateUserValidation(t *testing.T) {
 	}
 }
 
+func TestCreateFirstAdmin(t *testing.T) {
+	s := testService(t)
+	ctx := context.Background()
+
+	u, err := s.CreateFirstAdmin(ctx, "admin", "", "long enough password")
+	if err != nil {
+		t.Fatalf("CreateFirstAdmin: %v", err)
+	}
+	if u.IsAdmin != 1 {
+		t.Error("first admin is not an admin")
+	}
+
+	_, err = s.CreateFirstAdmin(ctx, "second", "", "long enough password")
+	if !errors.Is(err, ErrSetupComplete) {
+		t.Errorf("second CreateFirstAdmin err = %v, want ErrSetupComplete", err)
+	}
+	if n, _ := s.UserCount(ctx); n != 1 {
+		t.Errorf("UserCount = %d, want 1", n)
+	}
+}
+
+func TestCreateFirstAdminValidatesBeforeCounting(t *testing.T) {
+	s := testService(t)
+	if _, err := s.CreateFirstAdmin(context.Background(), "x", "", "short"); !errors.Is(err, ErrInvalidUsername) {
+		t.Errorf("err = %v, want ErrInvalidUsername", err)
+	}
+	if n, _ := s.UserCount(context.Background()); n != 0 {
+		t.Errorf("UserCount = %d after failed setup, want 0", n)
+	}
+}
+
 func TestUserByUsernameMissing(t *testing.T) {
 	s := testService(t)
 	if _, err := s.UserByUsername(context.Background(), "ghost"); !errors.Is(err, ErrUserNotFound) {

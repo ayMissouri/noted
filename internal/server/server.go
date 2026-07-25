@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"github.com/ayMissouri/noted/internal/auth"
 	"github.com/ayMissouri/noted/internal/config"
 	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/notes"
@@ -25,13 +26,14 @@ type Server struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	notes  *notes.Service
+	auth   *auth.Service
 	render *markdown.Renderer
 	assets fs.FS
 }
 
-func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, renderer *markdown.Renderer, assets fs.FS) *Server {
+func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, authSvc *auth.Service, renderer *markdown.Renderer, assets fs.FS) *Server {
 	e := echo.New()
-	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc, render: renderer, assets: assets}
+	s := &Server{echo: e, cfg: cfg, logger: logger, notes: notesSvc, auth: authSvc, render: renderer, assets: assets}
 	e.HTTPErrorHandler = s.handleError
 	e.Use(middleware.RequestID())
 	e.Use(s.requestLogger())
@@ -64,6 +66,13 @@ var domainErrors = []struct {
 	{notes.ErrVersionConflict, http.StatusConflict, "version_conflict"},
 	{notes.ErrNameTaken, http.StatusConflict, "name_taken"},
 	{notes.ErrInvalidName, http.StatusUnprocessableEntity, "invalid_name"},
+	{auth.ErrSetupComplete, http.StatusConflict, "setup_complete"},
+	{auth.ErrUsernameTaken, http.StatusConflict, "username_taken"},
+	{auth.ErrEmailTaken, http.StatusConflict, "email_taken"},
+	{auth.ErrInvalidUsername, http.StatusUnprocessableEntity, "invalid_username"},
+	{auth.ErrInvalidEmail, http.StatusUnprocessableEntity, "invalid_email"},
+	{auth.ErrWeakPassword, http.StatusUnprocessableEntity, "weak_password"},
+	{auth.ErrUserNotFound, http.StatusNotFound, "not_found"},
 }
 
 type errorBody struct {

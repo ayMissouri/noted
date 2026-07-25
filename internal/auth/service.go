@@ -18,6 +18,7 @@ import (
 )
 
 var (
+	ErrSetupComplete   = errors.New("setup is already complete")
 	ErrUserNotFound    = errors.New("user not found")
 	ErrUsernameTaken   = errors.New("that username is taken")
 	ErrEmailTaken      = errors.New("an account with that email already exists")
@@ -37,39 +38,46 @@ func NewService(sqldb *sql.DB) *Service {
 	return &Service{sqldb: sqldb, q: db.New(sqldb)}
 }
 
-func (s *Service) CreateUser(ctx context.Context, username, email, password string, isAdmin bool) (db.User, error) {
+// prepareNewUser validates inputs and hashes the password.
+func prepareNewUser(username, email, password string) (db.CreateUserParams, error) {
 	username = strings.TrimSpace(username)
 	if !usernameRe.MatchString(username) {
-		return db.User{}, ErrInvalidUsername
+		return db.CreateUserParams{}, ErrInvalidUsername
 	}
 	var emailPtr *string
 	if email = strings.TrimSpace(email); email != "" {
 		if _, err := mail.ParseAddress(email); err != nil {
-			return db.User{}, ErrInvalidEmail
+			return db.CreateUserParams{}, ErrInvalidEmail
 		}
 		emailPtr = &email
 	}
 	if len(password) < 8 || len(password) > 512 {
-		return db.User{}, ErrWeakPassword
+		return db.CreateUserParams{}, ErrWeakPassword
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
-		return db.User{}, err
+		return db.CreateUserParams{}, err
 	}
-
 	id, err := newID()
+	if err != nil {
+		return db.CreateUserParams{}, err
+	}
+	now := timestamp()
+	return db.CreateUserParams{
+		ID: id, Username: username, Email: emailPtr, PasswordHash: hash,
+		CreatedAt: now, UpdatedAt: now,
+	}, nil
+}
+
+func (s *Service) CreateUser(ctx context.Context, username, email, password string, isAdmin bool) (db.User, error) {
+	params, err := prepareNewUser(username, email, password)
 	if err != nil {
 		return db.User{}, err
 	}
-	now := timestamp()
-	admin := int64(0)
 	if isAdmin {
-		admin = 1
+		params.IsAdmin = 1
 	}
-	err = s.q.CreateUser(ctx, db.CreateUserParams{
-		ID: id, Username: username, Email: emailPtr, PasswordHash: hash,
-		IsAdmin: admin, CreatedAt: now, UpdatedAt: now,
-	})
+	err = s.q.CreateUser(ctx, params)
 	switch uniqueColumn(err) {
 	case "users.username":
 		return db.User{}, ErrUsernameTaken
@@ -79,7 +87,42 @@ func (s *Service) CreateUser(ctx context.Context, username, email, password stri
 	if err != nil {
 		return db.User{}, fmt.Errorf("create user: %w", err)
 	}
-	return s.userByID(ctx, id)
+	return s.userByID(ctx, params.ID)
+}
+
+// CreateFirstAdmin creates the admin account (when no other user exists).
+func (s *Service) CreateFirstAdmin(ctx context.Context, username, email, password string) (db.User, error) {
+	params, err := prepareNewUser(username, email, password)
+	if err != nil {
+		return db.User{}, err
+	}
+	params.IsAdmin = 1
+
+	tx, err := s.sqldb.BeginTx(ctx, nil)
+	if err != nil {
+		return db.User{}, fmt.Errorf("create first admin: %w", err)
+	}
+	defer tx.Rollback()
+	qtx := s.q.WithTx(tx)
+
+	n, err := qtx.CountUsers(ctx)
+	if err != nil {
+		return db.User{}, fmt.Errorf("create first admin: %w", err)
+	}
+	if n > 0 {
+		return db.User{}, ErrSetupComplete
+	}
+	if err := qtx.CreateUser(ctx, params); err != nil {
+		return db.User{}, fmt.Errorf("create first admin: %w", err)
+	}
+	u, err := qtx.GetUser(ctx, params.ID)
+	if err != nil {
+		return db.User{}, fmt.Errorf("create first admin: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return db.User{}, fmt.Errorf("create first admin: %w", err)
+	}
+	return u, nil
 }
 
 func (s *Service) UserCount(ctx context.Context) (int64, error) {

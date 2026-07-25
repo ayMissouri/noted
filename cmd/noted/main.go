@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/ayMissouri/noted/internal/auth"
 	"github.com/ayMissouri/noted/internal/config"
 	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/notes"
@@ -91,7 +92,7 @@ func serve() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(a.cfg, a.logger, a.notes, markdown.NewRenderer(), web.Dist())
+	srv := server.New(a.cfg, a.logger, a.notes, auth.NewService(a.db), markdown.NewRenderer(), web.Dist())
 	return srv.Run(ctx)
 }
 

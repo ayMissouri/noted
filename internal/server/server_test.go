@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/ayMissouri/noted/internal/auth"
 	"github.com/ayMissouri/noted/internal/config"
 	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/notes"
@@ -43,7 +44,7 @@ func testServer(t *testing.T) (*Server, string) {
 		"index.html":    &fstest.MapFile{Data: []byte("<!doctype html><title>noted test</title>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('app')")},
 	}
-	return New(cfg, logger, svc, markdown.NewRenderer(), assets), vault.ID
+	return New(cfg, logger, svc, auth.NewService(sqldb), markdown.NewRenderer(), assets), vault.ID
 }
 
 func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
@@ -210,6 +211,55 @@ func TestStaticApp(t *testing.T) {
 	}
 	if got := errCode(t, rec); got != "not_found" {
 		t.Errorf("code = %q, want not_found", got)
+	}
+}
+
+func TestFirstRunSetup(t *testing.T) {
+	s, _ := testServer(t)
+
+	rec := do(t, s, http.MethodGet, "/api/v1/setup", "")
+	if out := decode[map[string]bool](t, rec); !out["needs_setup"] {
+		t.Fatalf("needs_setup = false on a fresh server, want true")
+	}
+
+	rec = do(t, s, http.MethodPost, "/api/v1/setup", `{"username":"admin","password":"long enough password"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup status = %d: %s", rec.Code, rec.Body.String())
+	}
+	created := decode[userJSON](t, rec)
+	if !created.IsAdmin || created.Username != "admin" {
+		t.Errorf("created = %+v, want admin user", created)
+	}
+	if strings.Contains(rec.Body.String(), "argon2id") || strings.Contains(rec.Body.String(), "password") {
+		t.Errorf("setup response leaks password material: %s", rec.Body.String())
+	}
+
+	rec = do(t, s, http.MethodGet, "/api/v1/setup", "")
+	if out := decode[map[string]bool](t, rec); out["needs_setup"] {
+		t.Error("needs_setup still true after setup")
+	}
+
+	rec = do(t, s, http.MethodPost, "/api/v1/setup", `{"username":"intruder","password":"long enough password"}`)
+	if rec.Code != http.StatusConflict || errCode(t, rec) != "setup_complete" {
+		t.Errorf("second setup = %d %s, want 409 setup_complete", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetupValidation(t *testing.T) {
+	s, _ := testServer(t)
+	tests := []struct {
+		body     string
+		wantCode string
+	}{
+		{`{"username":"x","password":"long enough password"}`, "invalid_username"},
+		{`{"username":"valid","password":"short"}`, "weak_password"},
+		{`{"username":"valid","email":"nope","password":"long enough password"}`, "invalid_email"},
+	}
+	for _, tt := range tests {
+		rec := do(t, s, http.MethodPost, "/api/v1/setup", tt.body)
+		if rec.Code != http.StatusUnprocessableEntity || errCode(t, rec) != tt.wantCode {
+			t.Errorf("body %s: got %d %s, want 422 %s", tt.body, rec.Code, errCode(t, rec), tt.wantCode)
+		}
 	}
 }
 
