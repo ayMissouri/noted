@@ -15,7 +15,7 @@ services:
       retries: 3
 
   caddy:
-    image: caddy:2-alpine
+    image: public.ecr.aws/docker/library/caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
