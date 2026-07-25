@@ -43,6 +43,22 @@ jobs:
       - name: sqlc output is current
         run: go tool sqlc diff
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t noted-ci .
+      - name: image starts and serves healthz
+        run: |
+          docker run -d --name noted-ci -p 6683:6683 noted-ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:6683/healthz; then exit 0; fi
+            sleep 1
+          done
+          echo "server never became healthy"
+          docker logs noted-ci
+          exit 1
+
   web:
     runs-on: ubuntu-latest
     defaults:
