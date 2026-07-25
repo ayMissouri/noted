@@ -12,13 +12,16 @@ func (s *Server) routes() {
 	api := s.echo.Group("/api/v1")
 	api.GET("/setup", s.handleSetupStatus)
 	api.POST("/setup", s.handleSetup)
-	api.GET("/vaults", s.handleListVaults)
-	api.GET("/vaults/:vaultID/notes", s.handleListNotes)
-	api.POST("/vaults/:vaultID/notes", s.handleCreateNote)
-	api.GET("/notes/:id", s.handleGetNote)
-	api.PUT("/notes/:id", s.handleUpdateNote)
-	api.GET("/notes/:id/html", s.handleNoteHTML)
-	api.POST("/render", s.handleRender)
+	api.POST("/login", s.handleLogin)
+
+	authed := api.Group("", s.requireAuth())
+	authed.GET("/vaults", s.handleListVaults)
+	authed.GET("/vaults/:vaultID/notes", s.handleListNotes)
+	authed.POST("/vaults/:vaultID/notes", s.handleCreateNote)
+	authed.GET("/notes/:id", s.handleGetNote)
+	authed.PUT("/notes/:id", s.handleUpdateNote)
+	authed.GET("/notes/:id/html", s.handleNoteHTML)
+	authed.POST("/render", s.handleRender)
 
 	s.echo.RouteNotFound("/*", s.spaHandler())
 }

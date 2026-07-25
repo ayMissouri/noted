@@ -5,7 +5,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/ayMissouri/noted/internal/notes"
 	"github.com/ayMissouri/noted/internal/storage/db"
 )
 
@@ -84,7 +83,7 @@ func (s *Server) handleCreateNote(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	note, err := s.notes.Create(c.Request().Context(), c.Param("vaultID"), req.Name, req.Body, webActor)
+	note, err := s.notes.Create(c.Request().Context(), c.Param("vaultID"), req.Name, req.Body, actorFrom(c))
 	if err != nil {
 		return err
 	}
@@ -115,12 +114,9 @@ func (s *Server) handleUpdateNote(c *echo.Context) error {
 	if req.BaseVersion < 1 {
 		return echo.NewHTTPError(http.StatusBadRequest, "base_version is required and must be at least 1")
 	}
-	note, err := s.notes.Update(c.Request().Context(), c.Param("id"), req.BaseVersion, *req.Body, webActor)
+	note, err := s.notes.Update(c.Request().Context(), c.Param("id"), req.BaseVersion, *req.Body, actorFrom(c))
 	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, toNoteJSON(note))
 }
-
-// temp
-var webActor = notes.Actor{Kind: notes.KindUser}
