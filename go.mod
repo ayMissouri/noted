@@ -69,4 +69,6 @@ require (
 	golang.org/x/time v0.14.0
 )
 
+require github.com/yuin/goldmark v1.8.2
+
 tool github.com/sqlc-dev/sqlc/cmd/sqlc
