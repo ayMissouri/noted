@@ -64,4 +64,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require (
+	github.com/labstack/echo/v5 v5.0.0
+	golang.org/x/time v0.14.0
+)
+
 tool github.com/sqlc-dev/sqlc/cmd/sqlc

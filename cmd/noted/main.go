@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/ahmedmissouri/noted/internal/config"
+	"github.com/ahmedmissouri/noted/internal/server"
 	"github.com/ahmedmissouri/noted/internal/storage"
 )
 
@@ -46,8 +49,11 @@ func run(args []string) error {
 		}
 	}
 	logger.Info("database ready", "path", dbPath)
-	fmt.Println("noted: database ready; no server yet")
-	return nil
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv := server.New(cfg, logger)
+	return srv.Run(ctx)
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {
