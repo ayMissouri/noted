@@ -13,5 +13,6 @@ RUN apk add --no-cache ca-certificates \
 COPY --from=build /noted /usr/local/bin/noted
 USER noted
 ENV NOTED_DATA_DIR=/data
+ENV NOTED_LISTEN_ADDR=:6683
 EXPOSE 6683
 ENTRYPOINT ["noted"]

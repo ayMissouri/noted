@@ -18,8 +18,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DataDir != "data" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "data")
 	}
-	if cfg.ListenAddr != ":6683" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, ":6683")
+	if cfg.ListenAddr != "127.0.0.1:6683" {
+		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, "127.0.0.1:6683")
 	}
 	if cfg.BaseURL != nil {
 		t.Errorf("BaseURL = %v, want nil", cfg.BaseURL)

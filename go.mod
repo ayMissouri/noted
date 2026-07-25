@@ -12,7 +12,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/ncruces/go-strftime v1.0.0
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
-	golang.org/x/sys v0.43.0
+	golang.org/x/sys v0.47.0
 	modernc.org/libc v1.72.0
 	modernc.org/mathutil v1.7.1
 	modernc.org/memory v1.11.0
@@ -53,9 +53,9 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/net v0.49.0
-	golang.org/x/sync v0.20.0
-	golang.org/x/text v0.36.0
+	golang.org/x/net v0.56.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/text v0.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260120221211-b8f7ae30c516
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516
 	google.golang.org/grpc v1.80.0
@@ -70,5 +70,7 @@ require (
 )
 
 require github.com/yuin/goldmark v1.8.2
+
+require golang.org/x/crypto v0.54.0
 
 tool github.com/sqlc-dev/sqlc/cmd/sqlc

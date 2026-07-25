@@ -24,7 +24,7 @@ type Config struct {
 
 const (
 	defaultDataDir    = "data"
-	defaultListenAddr = ":6683"
+	defaultListenAddr = "127.0.0.1:6683"
 	defaultLogFormat  = "text"
 )
 
