@@ -15,23 +15,23 @@ type Config struct {
 	// ListenAddr is the host:port the HTTP server binds to.
 	ListenAddr string
 	// BaseURL is the public URL at which clients reach this server.
-	BaseURL *url.URL
-	LogLevel slog.Level
+	BaseURL   *url.URL
+	LogLevel  slog.Level
 	LogFormat string
 	// AutoMigrate applies pending migrations on boot.
 	AutoMigrate bool
 }
 
 const (
-	defaultDataDir = "data"
+	defaultDataDir    = "data"
 	defaultListenAddr = ":6683"
-	defaultLogFormat = "text"
+	defaultLogFormat  = "text"
 )
 
 func Load(getenv func(string) string) (*Config, error) {
 	cfg := &Config{
-		DataDir:    defaultDataDir,
-		ListenAddr: defaultListenAddr,
+		DataDir:     defaultDataDir,
+		ListenAddr:  defaultListenAddr,
 		LogLevel:    slog.LevelInfo,
 		LogFormat:   defaultLogFormat,
 		AutoMigrate: true,

@@ -40,8 +40,8 @@ func testServer(t *testing.T) (*Server, string) {
 	}
 	logger := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 	assets := fstest.MapFS{
-		"index.html":     &fstest.MapFile{Data: []byte("<!doctype html><title>noted test</title>")},
-		"assets/app.js":  &fstest.MapFile{Data: []byte("console.log('app')")},
+		"index.html":    &fstest.MapFile{Data: []byte("<!doctype html><title>noted test</title>")},
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('app')")},
 	}
 	return New(cfg, logger, svc, markdown.NewRenderer(), assets), vault.ID
 }

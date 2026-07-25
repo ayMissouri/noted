@@ -121,9 +121,9 @@ func TestLoadValidValues(t *testing.T) {
 
 func TestLoadInvalidValues(t *testing.T) {
 	tests := []struct {
-		name    string
-		env     map[string]string
-		wantIn  string
+		name   string
+		env    map[string]string
+		wantIn string
 	}{
 		{
 			name:   "bad log level names the variable",
