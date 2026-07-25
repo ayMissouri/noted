@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,44 +26,72 @@ func main() {
 }
 
 func run(args []string) error {
-	_ = args
+	cmd := "serve"
+	if len(args) > 0 {
+		cmd = args[0]
+	}
+	switch cmd {
+	case "serve":
+		return serve()
+	case "demo":
+		return demo()
+	default:
+		return fmt.Errorf("unknown command %q, want serve or demo", cmd)
+	}
+}
+
+type app struct {
+	cfg    *config.Config
+	logger *slog.Logger
+	db     *sql.DB
+	notes  *notes.Service
+}
+
+func setup() (*app, func(), error) {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	logger := newLogger(cfg)
 
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
-		return fmt.Errorf("create data dir %s: %w", cfg.DataDir, err)
+		return nil, nil, fmt.Errorf("create data dir %s: %w", cfg.DataDir, err)
 	}
 	dbPath := filepath.Join(cfg.DataDir, "noted.db")
 	db, err := storage.Open(dbPath)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer db.Close()
-
 	if cfg.AutoMigrate {
 		ran, err := storage.Migrate(context.Background(), db, storage.Migrations())
 		if err != nil {
-			return fmt.Errorf("migrate: %w", err)
+			db.Close()
+			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
 		if ran > 0 {
 			logger.Info("applied migrations", "count", ran)
 		}
 	}
 	logger.Info("database ready", "path", dbPath)
+	return &app{cfg: cfg, logger: logger, db: db, notes: notes.NewService(db)}, func() { db.Close() }, nil
+}
 
-	notesSvc := notes.NewService(db)
-	vault, err := notesSvc.EnsureDefaultVault(context.Background())
+func serve() error {
+	a, cleanup, err := setup()
 	if err != nil {
 		return err
 	}
-	logger.Info("vault ready", "id", vault.ID, "name", vault.Name)
+	defer cleanup()
+
+	vault, err := a.notes.EnsureDefaultVault(context.Background())
+	if err != nil {
+		return err
+	}
+	a.logger.Info("vault ready", "id", vault.ID, "name", vault.Name)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(cfg, logger, notesSvc, markdown.NewRenderer(), web.Dist())
+	srv := server.New(a.cfg, a.logger, a.notes, markdown.NewRenderer(), web.Dist())
 	return srv.Run(ctx)
 }
 

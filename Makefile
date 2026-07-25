@@ -4,6 +4,7 @@ SHELL := bash
 .PHONY: dev dev-client build test lint vuln generate sqlc-check client ci
 
 dev:
+	go run ./cmd/noted demo
 	go run ./cmd/noted
 
 dev-client:
