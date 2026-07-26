@@ -10,8 +10,10 @@ dev:
 dev-client:
 	cd web && npm run dev
 
+VERSION ?= dev
+
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o noted ./cmd/noted
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/ayMissouri/noted/internal/buildinfo.Version=$(VERSION)" -o noted ./cmd/noted
 
 test:
 	go test -race ./...

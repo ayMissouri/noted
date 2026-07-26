@@ -22,6 +22,7 @@ type Config struct {
 	AutoMigrate bool
 	// CORSOrigins lists urls allowed to call the API.
 	CORSOrigins []string
+	ServerName string
 }
 
 const (
@@ -37,6 +38,7 @@ func Load(getenv func(string) string) (*Config, error) {
 		LogLevel:    slog.LevelInfo,
 		LogFormat:   defaultLogFormat,
 		AutoMigrate: true,
+		ServerName:  "noted",
 	}
 	var errs []error
 	fail := func(variable, got, want string) {
@@ -85,6 +87,14 @@ func Load(getenv func(string) string) (*Config, error) {
 			cfg.LogFormat = strings.ToLower(v)
 		default:
 			fail("NOTED_LOG_FORMAT", v, `"text" or "json"`)
+		}
+	}
+
+	if v := strings.TrimSpace(getenv("NOTED_SERVER_NAME")); v != "" {
+		if len(v) > 100 {
+			fail("NOTED_SERVER_NAME", v, "a name of at most 100 characters")
+		} else {
+			cfg.ServerName = v
 		}
 	}
 

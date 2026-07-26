@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/ayMissouri/noted/internal/auth"
+	"github.com/ayMissouri/noted/internal/buildinfo"
 	"github.com/ayMissouri/noted/internal/config"
 	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/notes"
@@ -36,8 +37,19 @@ func run(args []string) error {
 		return serve()
 	case "demo":
 		return demo()
+	case "version":
+		info := buildinfo.Get()
+		fmt.Printf("noted %s", info.Version)
+		if info.Commit != "" {
+			fmt.Printf(" commit %.12s", info.Commit)
+		}
+		if info.BuiltAt != "" {
+			fmt.Printf(" built %s", info.BuiltAt)
+		}
+		fmt.Println()
+		return nil
 	default:
-		return fmt.Errorf("unknown command %q, want serve or demo", cmd)
+		return fmt.Errorf("unknown command %q, want serve, demo, or version", cmd)
 	}
 }
 

@@ -216,6 +216,24 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestServerInfo(t *testing.T) {
+	e := newBareEnv(t)
+	rec := e.do(t, http.MethodGet, "/api/v1/server", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 without auth", rec.Code)
+	}
+	out := decode[map[string]any](t, rec)
+	if out["name"] != "noted" || out["api_version"] != "v1" {
+		t.Errorf("info = %v, want name noted api_version v1", out)
+	}
+	if v, _ := out["version"].(string); v == "" {
+		t.Error("version is empty")
+	}
+	if _, ok := out["features"].(map[string]any); !ok {
+		t.Errorf("features = %v, want an object", out["features"])
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	e := newBareEnv(t)
 	rec := e.do(t, http.MethodGet, "/healthz", "")

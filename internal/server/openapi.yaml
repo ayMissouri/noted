@@ -1,0 +1,461 @@
+openapi: "3.1.0"
+info:
+  title: noted API
+  description: >
+    The HTTP API for noted, a self-hostable Markdown note server.
+  version: v1
+  license:
+    name: MIT
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: The server is up.
+
+  /api/v1/server:
+    get:
+      summary: Server identity and compatibility info
+      security: []
+      responses:
+        "200":
+          description: Server info.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  version: { type: string }
+                  commit: { type: string }
+                  api_version: { type: string }
+                  features:
+                    type: object
+                    additionalProperties: { type: boolean }
+
+  /api/v1/setup:
+    get:
+      summary: Whether first-run setup is still needed
+      security: []
+      responses:
+        "200":
+          description: Setup status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needs_setup: { type: boolean }
+    post:
+      summary: Create the first admin account
+      description: Only succeeds while the server has no users. Rate limited.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                email: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201":
+          description: The admin account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /api/v1/login:
+    post:
+      summary: Exchange credentials for a device token
+      description: The token is returned exactly once; store it. Rate limited.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                device_name: { type: string }
+                kind: { type: string, enum: [web, cli] }
+      responses:
+        "200":
+          description: The minted token with its user and device.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+                  device: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /api/v1/devices:
+    get:
+      summary: List the caller's devices and tokens
+      responses:
+        "200":
+          description: Active devices, current one flagged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items: { $ref: "#/components/schemas/Device" }
+
+  /api/v1/devices/{id}:
+    delete:
+      summary: Revoke a device token
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Revoked; its next request fails. }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/users:
+    get:
+      summary: List accounts (admin only)
+      responses:
+        "200":
+          description: All accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Create an account (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                email: { type: string }
+                password: { type: string, minLength: 8 }
+                is_admin: { type: boolean }
+      responses:
+        "201":
+          description: The account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /api/v1/vaults:
+    get:
+      summary: List accessible vaults
+      parameters: [{ $ref: "#/components/parameters/since" }]
+      responses:
+        "200":
+          description: Vaults plus a sync cursor. With since, includes tombstones.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vaults:
+                    type: array
+                    items: { $ref: "#/components/schemas/Vault" }
+                  cursor: { type: integer }
+    post:
+      summary: Create a vault owned by the caller
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: The vault.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vault" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /api/v1/vaults/{vaultID}:
+    patch:
+      summary: Rename a vault
+      parameters: [{ $ref: "#/components/parameters/vaultID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: The renamed vault.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vault" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Soft-delete a vault
+      description: The vault and its notes become inaccessible; sync clients see a tombstone.
+      parameters: [{ $ref: "#/components/parameters/vaultID" }]
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/vaults/{vaultID}/notes:
+    get:
+      summary: List a vault's notes
+      parameters:
+        - { $ref: "#/components/parameters/vaultID" }
+        - { $ref: "#/components/parameters/since" }
+      responses:
+        "200":
+          description: Notes without bodies, plus a sync cursor. With since, includes tombstones.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteListItem" }
+                  cursor: { type: integer }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Create a note
+      parameters: [{ $ref: "#/components/parameters/vaultID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                body: { type: string }
+      responses:
+        "201":
+          description: The note at version 1.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /api/v1/notes/{id}:
+    get:
+      summary: Fetch a note with its body
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: The note.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      summary: Replace a note's body with optimistic concurrency
+      description: base_version must equal the stored version; a mismatch is a 409 and the caller re-reads.
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body, base_version]
+              properties:
+                body: { type: string }
+                base_version: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: The note at its new version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Move a note to the trash
+      description: Soft delete; restorable, and visible to sync clients as a tombstone.
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: Trashed. }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/notes/{id}/restore:
+    post:
+      summary: Restore a note from the trash
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: The restored note.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Note" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/v1/notes/{id}/html:
+    get:
+      summary: Render a stored note to HTML
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: Rendered HTML and the version it reflects.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  html: { type: string }
+                  version: { type: integer }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/render:
+    post:
+      summary: Render arbitrary Markdown to HTML
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [markdown]
+              properties:
+                markdown: { type: string }
+      responses:
+        "200":
+          description: Rendered HTML. Raw HTML in the input never passes through.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  html: { type: string }
+
+  /api/v1/openapi.yaml:
+    get:
+      summary: This document
+      security: []
+      responses:
+        "200":
+          description: The OpenAPI description of this server.
+          content:
+            application/yaml: {}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Device token from /api/v1/login.
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    vaultID:
+      name: vaultID
+      in: path
+      required: true
+      schema: { type: string }
+    since:
+      name: since
+      in: query
+      required: false
+      description: Change cursor from a previous listing; returns only rows changed after it, including tombstones.
+      schema: { type: integer, minimum: 0 }
+  responses:
+    Error:
+      description: >
+        Error envelope. code is machine-readable and stable; message is for humans.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        email: { type: [string, "null"] }
+        is_admin: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Device:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [web, cli, pat, mcp] }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: [string, "null"], format: date-time }
+        current: { type: boolean }
+    Vault:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        change_seq: { type: integer }
+        deleted: { type: boolean }
+    NoteListItem:
+      type: object
+      properties:
+        id: { type: string }
+        vault_id: { type: string }
+        name: { type: string }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        change_seq: { type: integer }
+        deleted: { type: boolean }
+    Note:
+      allOf:
+        - { $ref: "#/components/schemas/NoteListItem" }
+        - type: object
+          properties:
+            body: { type: string }

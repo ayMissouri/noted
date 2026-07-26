@@ -11,6 +11,8 @@ func (s *Server) routes() {
 
 	api := s.echo.Group("/api/v1")
 	authLimit := authRateLimiter()
+	api.GET("/server", s.handleServerInfo)
+	api.GET("/openapi.yaml", s.handleOpenAPI)
 	api.GET("/setup", s.handleSetupStatus)
 	api.POST("/setup", s.handleSetup, authLimit)
 	api.POST("/login", s.handleLogin, authLimit)
