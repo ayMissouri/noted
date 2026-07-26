@@ -1,10 +1,12 @@
 <script lang="ts">
   import { api, ApiError, clearToken, hasToken, type Note, type NoteListItem } from './lib/api'
+  import Devices from './lib/Devices.svelte'
   import Editor from './lib/Editor.svelte'
   import Login from './lib/Login.svelte'
   import Setup from './lib/Setup.svelte'
 
   let screen = $state<'loading' | 'setup' | 'login' | 'app'>('loading')
+  let view = $state<'notes' | 'settings'>('notes')
   let vaultId = $state<string | null>(null)
   let vaultName = $state('')
   let notes = $state<NoteListItem[]>([])
@@ -52,7 +54,13 @@
     notes = []
     current = null
     vaultId = null
+    view = 'notes'
     screen = 'login'
+  }
+
+  function openNote(id: string) {
+    view = 'notes'
+    open(id)
   }
 
   async function open(id: string) {
@@ -104,7 +112,7 @@
     </form>
     <nav>
       {#each notes as n (n.id)}
-        <button class="note" class:active={current?.id === n.id} onclick={() => open(n.id)}>
+        <button class="note" class:active={view === 'notes' && current?.id === n.id} onclick={() => openNote(n.id)}>
           {n.name}
         </button>
       {/each}
@@ -112,14 +120,21 @@
         <p class="empty">No notes yet.</p>
       {/if}
     </nav>
-    <button class="logout" onclick={logout}>Log out</button>
+    <div class="footer">
+      <button class="ghost" onclick={() => (view = view === 'settings' ? 'notes' : 'settings')}>
+        {view === 'settings' ? 'Back to notes' : 'Settings'}
+      </button>
+      <button class="ghost" onclick={logout}>Log out</button>
+    </div>
   </aside>
 
   <main>
     {#if error}
       <p class="error">{error}</p>
     {/if}
-    {#if current}
+    {#if view === 'settings'}
+      <Devices oncurrentrevoked={logout} />
+    {:else if current}
       <Editor note={current} onsaved={onSaved} />
     {:else}
       <p class="empty">Pick a note, or create one.</p>
@@ -178,8 +193,12 @@
   .note.active {
     background: var(--active);
   }
-  .logout {
+  .footer {
+    display: flex;
+    gap: 0.5rem;
     margin-top: 1.5rem;
+  }
+  .ghost {
     background: none;
     border: 1px solid var(--border);
     border-radius: 0.3rem;

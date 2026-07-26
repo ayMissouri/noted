@@ -28,6 +28,15 @@ export interface User {
   created_at: string
 }
 
+export interface Device {
+  id: string
+  name: string
+  kind: string
+  created_at: string
+  last_seen_at: string | null
+  current: boolean
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -103,6 +112,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {}
     throw new ApiError(res.status, code, message)
   }
+  if (res.status === 204) {
+    return undefined as T
+  }
   return res.json() as Promise<T>
 }
 
@@ -124,6 +136,11 @@ export const api = {
       storeToken(r.token)
       return r.user
     }),
+
+  devices: () => request<{ devices: Device[] }>('/api/v1/devices').then((r) => r.devices),
+
+  revokeDevice: (id: string) =>
+    request<void>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   vaults: () => request<{ vaults: Vault[] }>('/api/v1/vaults').then((r) => r.vaults),
 
