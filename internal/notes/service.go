@@ -34,6 +34,7 @@ type Actor struct {
 	Kind    string
 	UserID  *string
 	TokenID *string
+	Admin   bool
 }
 
 var System = Actor{Kind: KindSystem}
@@ -99,15 +100,47 @@ func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 	return db.Vault{ID: vaultID, Name: "Notes", CreatedAt: now, UpdatedAt: now, ChangeSeq: seq}, nil
 }
 
-func (s *Service) Vaults(ctx context.Context) ([]db.Vault, error) {
+// unowned vaults are open to everyone, owned vaults to their owner and admins.
+func accessible(v db.Vault, actor Actor) bool {
+	if v.OwnerID == nil || actor.Admin {
+		return true
+	}
+	return actor.UserID != nil && *actor.UserID == *v.OwnerID
+}
+
+// checkVault resolves a vault the user may access.
+func checkVault(ctx context.Context, q *db.Queries, vaultID string, actor Actor) (db.Vault, error) {
+	v, err := q.GetVault(ctx, vaultID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return db.Vault{}, ErrVaultNotFound
+	}
+	if err != nil {
+		return db.Vault{}, fmt.Errorf("get vault: %w", err)
+	}
+	if !accessible(v, actor) {
+		return db.Vault{}, ErrVaultNotFound
+	}
+	return v, nil
+}
+
+func (s *Service) Vaults(ctx context.Context, actor Actor) ([]db.Vault, error) {
 	vaults, err := s.q.ListVaults(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list vaults: %w", err)
 	}
-	return vaults, nil
+	visible := vaults[:0]
+	for _, v := range vaults {
+		if accessible(v, actor) {
+			visible = append(visible, v)
+		}
+	}
+	return visible, nil
 }
 
-func (s *Service) List(ctx context.Context, vaultID string) ([]db.ListNotesRow, error) {
+func (s *Service) List(ctx context.Context, vaultID string, actor Actor) ([]db.ListNotesRow, error) {
+	if _, err := checkVault(ctx, s.q, vaultID, actor); err != nil {
+		return nil, err
+	}
 	rows, err := s.q.ListNotes(ctx, vaultID)
 	if err != nil {
 		return nil, fmt.Errorf("list notes: %w", err)
@@ -115,13 +148,16 @@ func (s *Service) List(ctx context.Context, vaultID string) ([]db.ListNotesRow, 
 	return rows, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (db.Note, error) {
+func (s *Service) Get(ctx context.Context, id string, actor Actor) (db.Note, error) {
 	note, err := s.q.GetNote(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return db.Note{}, ErrNotFound
 	}
 	if err != nil {
 		return db.Note{}, fmt.Errorf("get note: %w", err)
+	}
+	if _, err := checkVault(ctx, s.q, note.VaultID, actor); err != nil {
+		return db.Note{}, ErrNotFound
 	}
 	return note, nil
 }
@@ -139,6 +175,9 @@ func (s *Service) Create(ctx context.Context, vaultID, name, body string, actor 
 	defer tx.Rollback()
 	qtx := s.q.WithTx(tx)
 
+	if _, err := checkVault(ctx, qtx, vaultID, actor); err != nil {
+		return db.Note{}, err
+	}
 	root, err := qtx.GetFolderByPath(ctx, db.GetFolderByPathParams{VaultID: vaultID, Path: ""})
 	if errors.Is(err, sql.ErrNoRows) {
 		return db.Note{}, ErrVaultNotFound
@@ -193,6 +232,17 @@ func (s *Service) Update(ctx context.Context, id string, baseVersion int64, body
 	defer tx.Rollback()
 	qtx := s.q.WithTx(tx)
 
+	existing, err := qtx.GetNote(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return db.Note{}, ErrNotFound
+	}
+	if err != nil {
+		return db.Note{}, fmt.Errorf("update note: %w", err)
+	}
+	if _, err := checkVault(ctx, qtx, existing.VaultID, actor); err != nil {
+		return db.Note{}, ErrNotFound
+	}
+
 	seq, err := qtx.NextChangeSeq(ctx)
 	if err != nil {
 		return db.Note{}, fmt.Errorf("update note: %w", err)
@@ -207,11 +257,6 @@ func (s *Service) Update(ctx context.Context, id string, baseVersion int64, body
 		return db.Note{}, fmt.Errorf("update note: %w", err)
 	}
 	if affected == 0 {
-		if _, err := qtx.GetNote(ctx, id); errors.Is(err, sql.ErrNoRows) {
-			return db.Note{}, ErrNotFound
-		} else if err != nil {
-			return db.Note{}, fmt.Errorf("update note: %w", err)
-		}
 		return db.Note{}, ErrVersionConflict
 	}
 	if err := qtx.SnapshotNoteVersion(ctx, db.SnapshotNoteVersionParams{

@@ -26,7 +26,7 @@ func (s *Server) handleRender(c *echo.Context) error {
 }
 
 func (s *Server) handleNoteHTML(c *echo.Context) error {
-	note, err := s.notes.Get(c.Request().Context(), c.Param("id"))
+	note, err := s.notes.Get(c.Request().Context(), c.Param("id"), actorFrom(c))
 	if err != nil {
 		return err
 	}

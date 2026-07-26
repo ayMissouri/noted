@@ -49,7 +49,7 @@ func actorFrom(c *echo.Context) notes.Actor {
 	if !ok {
 		return notes.Actor{Kind: notes.KindUser}
 	}
-	return notes.Actor{Kind: notes.KindUser, UserID: &id.User.ID, TokenID: &id.Token.ID}
+	return notes.Actor{Kind: notes.KindUser, UserID: &id.User.ID, TokenID: &id.Token.ID, Admin: id.User.IsAdmin == 1}
 }
 
 type tokenJSON struct {

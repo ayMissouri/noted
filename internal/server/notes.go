@@ -45,7 +45,7 @@ func toNoteJSON(n db.Note) noteJSON {
 }
 
 func (s *Server) handleListVaults(c *echo.Context) error {
-	vaults, err := s.notes.Vaults(c.Request().Context())
+	vaults, err := s.notes.Vaults(c.Request().Context(), actorFrom(c))
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (s *Server) handleListVaults(c *echo.Context) error {
 }
 
 func (s *Server) handleListNotes(c *echo.Context) error {
-	rows, err := s.notes.List(c.Request().Context(), c.Param("vaultID"))
+	rows, err := s.notes.List(c.Request().Context(), c.Param("vaultID"), actorFrom(c))
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func (s *Server) handleCreateNote(c *echo.Context) error {
 }
 
 func (s *Server) handleGetNote(c *echo.Context) error {
-	note, err := s.notes.Get(c.Request().Context(), c.Param("id"))
+	note, err := s.notes.Get(c.Request().Context(), c.Param("id"), actorFrom(c))
 	if err != nil {
 		return err
 	}

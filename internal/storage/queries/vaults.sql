@@ -2,6 +2,10 @@
 INSERT INTO vaults (id, owner_id, name, created_at, updated_at, change_seq)
 VALUES (?, ?, ?, ?, ?, ?);
 
+-- name: GetVault :one
+SELECT * FROM vaults
+WHERE id = ? AND deleted_at IS NULL;
+
 -- name: ListVaults :many
 SELECT * FROM vaults
 WHERE deleted_at IS NULL

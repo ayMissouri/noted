@@ -35,6 +35,26 @@ func (q *Queries) CreateVault(ctx context.Context, arg CreateVaultParams) error 
 	return err
 }
 
+const getVault = `-- name: GetVault :one
+SELECT id, owner_id, name, created_at, updated_at, deleted_at, change_seq FROM vaults
+WHERE id = ? AND deleted_at IS NULL
+`
+
+func (q *Queries) GetVault(ctx context.Context, id string) (Vault, error) {
+	row := q.db.QueryRowContext(ctx, getVault, id)
+	var i Vault
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.ChangeSeq,
+	)
+	return i, err
+}
+
 const listVaults = `-- name: ListVaults :many
 SELECT id, owner_id, name, created_at, updated_at, deleted_at, change_seq FROM vaults
 WHERE deleted_at IS NULL
