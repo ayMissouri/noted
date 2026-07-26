@@ -693,6 +693,76 @@ func TestListSinceCursor(t *testing.T) {
 	}
 }
 
+func TestTrashRestoreAndTombstones(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes", `{"name":"Doomed","body":"x"}`)
+	note := decode[noteJSON](t, rec)
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes", "")
+	cursor := decode[notesListResponse](t, rec).Cursor
+
+	if rec := e.do(t, http.MethodDelete, "/api/v1/notes/"+note.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("trash = %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := e.do(t, http.MethodGet, "/api/v1/notes/"+note.ID, ""); rec.Code != http.StatusNotFound {
+		t.Errorf("get trashed = %d, want 404", rec.Code)
+	}
+	if rec := e.do(t, http.MethodPut, "/api/v1/notes/"+note.ID, `{"body":"y","base_version":1}`); rec.Code != http.StatusNotFound {
+		t.Errorf("update trashed = %d, want 404", rec.Code)
+	}
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes", "")
+	if full := decode[notesListResponse](t, rec); len(full.Notes) != 0 {
+		t.Errorf("full list after trash = %d notes, want 0", len(full.Notes))
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes?since="+strconv.FormatInt(cursor, 10), "")
+	inc := decode[notesListResponse](t, rec)
+	if len(inc.Notes) != 1 || inc.Notes[0].ID != note.ID || !inc.Notes[0].Deleted {
+		t.Errorf("tombstone stream = %+v, want the trashed note flagged deleted", inc.Notes)
+	}
+
+	rec = e.do(t, http.MethodPost, "/api/v1/notes/"+note.ID+"/restore", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore = %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decode[noteJSON](t, rec); got.Body != "x" {
+		t.Errorf("restored body = %q, want x", got.Body)
+	}
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes", "")
+	if full := decode[notesListResponse](t, rec); len(full.Notes) != 1 {
+		t.Errorf("full list after restore = %d notes, want 1", len(full.Notes))
+	}
+}
+
+func TestVaultTombstoneInStream(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.do(t, http.MethodGet, "/api/v1/vaults", "")
+	cursor := decode[vaultsListResponse](t, rec).Cursor
+
+	rec = e.do(t, http.MethodPost, "/api/v1/vaults", `{"name":"Doomed vault"}`)
+	vault := decode[vaultJSON](t, rec)
+	if rec := e.do(t, http.MethodDelete, "/api/v1/vaults/"+vault.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete vault = %d", rec.Code)
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults?since="+strconv.FormatInt(cursor, 10), "")
+	inc := decode[vaultsListResponse](t, rec)
+	found := false
+	for _, v := range inc.Vaults {
+		if v.ID == vault.ID {
+			found = true
+			if !v.Deleted {
+				t.Error("deleted vault in stream not flagged deleted")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("deleted vault missing from since stream: %+v", inc.Vaults)
+	}
+}
+
 func TestStaleUpdateConflicts(t *testing.T) {
 	e := newEnv(t)
 	rec := e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes", `{"name":"Contested","body":"v1"}`)

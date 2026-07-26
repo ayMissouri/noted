@@ -26,6 +26,8 @@ func (s *Server) routes() {
 	authed.POST("/vaults/:vaultID/notes", s.handleCreateNote)
 	authed.GET("/notes/:id", s.handleGetNote)
 	authed.PUT("/notes/:id", s.handleUpdateNote)
+	authed.DELETE("/notes/:id", s.handleTrashNote)
+	authed.POST("/notes/:id/restore", s.handleRestoreNote)
 	authed.GET("/notes/:id/html", s.handleNoteHTML)
 	authed.POST("/render", s.handleRender)
 

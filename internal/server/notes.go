@@ -15,6 +15,7 @@ type vaultJSON struct {
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 	ChangeSeq int64  `json:"change_seq"`
+	Deleted   bool   `json:"deleted,omitempty"`
 }
 
 type noteJSON struct {
@@ -36,6 +37,7 @@ type noteListItemJSON struct {
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 	ChangeSeq int64  `json:"change_seq"`
+	Deleted   bool   `json:"deleted,omitempty"`
 }
 
 func toNoteJSON(n db.Note) noteJSON {
@@ -70,6 +72,7 @@ func (s *Server) handleListVaults(c *echo.Context) error {
 	for _, v := range vaults {
 		out = append(out, vaultJSON{
 			ID: v.ID, Name: v.Name, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, ChangeSeq: v.ChangeSeq,
+			Deleted: v.DeletedAt != nil,
 		})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"vaults": out, "cursor": cursor})
@@ -89,6 +92,7 @@ func (s *Server) handleListNotes(c *echo.Context) error {
 		out = append(out, noteListItemJSON{
 			ID: r.ID, VaultID: r.VaultID, Name: r.Name, Version: r.Version,
 			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq,
+			Deleted: r.Deleted,
 		})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"notes": out, "cursor": cursor})
@@ -136,6 +140,21 @@ func (s *Server) handleUpdateNote(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "base_version is required and must be at least 1")
 	}
 	note, err := s.notes.Update(c.Request().Context(), c.Param("id"), req.BaseVersion, *req.Body, actorFrom(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, toNoteJSON(note))
+}
+
+func (s *Server) handleTrashNote(c *echo.Context) error {
+	if err := s.notes.Trash(c.Request().Context(), c.Param("id"), actorFrom(c)); err != nil {
+		return err
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (s *Server) handleRestoreNote(c *echo.Context) error {
+	note, err := s.notes.Restore(c.Request().Context(), c.Param("id"), actorFrom(c))
 	if err != nil {
 		return err
 	}

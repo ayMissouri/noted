@@ -189,6 +189,7 @@ type NoteSummary struct {
 	CreatedAt string
 	UpdatedAt string
 	ChangeSeq int64
+	Deleted   bool
 }
 
 // Vaults lists accessible vaults.
@@ -229,7 +230,8 @@ func (s *Service) List(ctx context.Context, vaultID string, actor Actor, since i
 		}
 		for _, r := range rows {
 			out = append(out, NoteSummary{ID: r.ID, VaultID: r.VaultID, Name: r.Name, Version: r.Version,
-				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq})
+				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq,
+				Deleted: r.TrashedAt != nil || r.DeletedAt != nil})
 		}
 	} else {
 		rows, err := s.q.ListNotes(ctx, vaultID)
@@ -258,6 +260,94 @@ func (s *Service) Get(ctx context.Context, id string, actor Actor) (db.Note, err
 	}
 	if _, err := checkVault(ctx, s.q, note.VaultID, actor); err != nil {
 		return db.Note{}, ErrNotFound
+	}
+	if note.TrashedAt != nil {
+		return db.Note{}, ErrNotFound
+	}
+	return note, nil
+}
+
+// Trash soft-deletes a note, it stays restorable.
+func (s *Service) Trash(ctx context.Context, id string, actor Actor) error {
+	tx, err := s.sqldb.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("trash note: %w", err)
+	}
+	defer tx.Rollback()
+	qtx := s.q.WithTx(tx)
+
+	existing, err := qtx.GetNote(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("trash note: %w", err)
+	}
+	if _, err := checkVault(ctx, qtx, existing.VaultID, actor); err != nil {
+		return ErrNotFound
+	}
+	seq, err := qtx.NextChangeSeq(ctx)
+	if err != nil {
+		return fmt.Errorf("trash note: %w", err)
+	}
+	now := timestamp()
+	affected, err := qtx.TrashNote(ctx, db.TrashNoteParams{
+		TrashedAt: &now, UpdatedAt: now,
+		UpdatedByKind: actor.Kind, UpdatedByUser: actor.UserID, UpdatedByToken: actor.TokenID,
+		ChangeSeq: seq, ID: id,
+	})
+	if err != nil {
+		return fmt.Errorf("trash note: %w", err)
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit()
+}
+
+// Restore brings a trashed note back.
+func (s *Service) Restore(ctx context.Context, id string, actor Actor) (db.Note, error) {
+	tx, err := s.sqldb.BeginTx(ctx, nil)
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	defer tx.Rollback()
+	qtx := s.q.WithTx(tx)
+
+	existing, err := qtx.GetNote(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return db.Note{}, ErrNotFound
+	}
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	if _, err := checkVault(ctx, qtx, existing.VaultID, actor); err != nil {
+		return db.Note{}, ErrNotFound
+	}
+	if existing.TrashedAt == nil {
+		return existing, nil
+	}
+	seq, err := qtx.NextChangeSeq(ctx)
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	affected, err := qtx.RestoreNote(ctx, db.RestoreNoteParams{
+		UpdatedAt:     timestamp(),
+		UpdatedByKind: actor.Kind, UpdatedByUser: actor.UserID, UpdatedByToken: actor.TokenID,
+		ChangeSeq: seq, ID: id,
+	})
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	if affected == 0 {
+		return db.Note{}, ErrNotFound
+	}
+	note, err := qtx.GetNote(ctx, id)
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
 	}
 	return note, nil
 }
@@ -340,6 +430,9 @@ func (s *Service) Update(ctx context.Context, id string, baseVersion int64, body
 		return db.Note{}, fmt.Errorf("update note: %w", err)
 	}
 	if _, err := checkVault(ctx, qtx, existing.VaultID, actor); err != nil {
+		return db.Note{}, ErrNotFound
+	}
+	if existing.TrashedAt != nil {
 		return db.Note{}, ErrNotFound
 	}
 

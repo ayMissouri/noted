@@ -94,7 +94,7 @@ func (q *Queries) ListVaults(ctx context.Context) ([]Vault, error) {
 
 const listVaultsSince = `-- name: ListVaultsSince :many
 SELECT id, owner_id, name, created_at, updated_at, deleted_at, change_seq FROM vaults
-WHERE change_seq > ? AND deleted_at IS NULL
+WHERE change_seq > ?
 ORDER BY change_seq
 `
 

@@ -123,9 +123,9 @@ func (q *Queries) ListNotes(ctx context.Context, vaultID string) ([]ListNotesRow
 }
 
 const listNotesSince = `-- name: ListNotesSince :many
-SELECT id, vault_id, folder_id, name, version, created_at, updated_at, change_seq
+SELECT id, vault_id, folder_id, name, version, created_at, updated_at, change_seq, trashed_at, deleted_at
 FROM notes
-WHERE vault_id = ? AND change_seq > ? AND trashed_at IS NULL AND deleted_at IS NULL
+WHERE vault_id = ? AND change_seq > ?
 ORDER BY change_seq
 `
 
@@ -143,6 +143,8 @@ type ListNotesSinceRow struct {
 	CreatedAt string
 	UpdatedAt string
 	ChangeSeq int64
+	TrashedAt *string
+	DeletedAt *string
 }
 
 func (q *Queries) ListNotesSince(ctx context.Context, arg ListNotesSinceParams) ([]ListNotesSinceRow, error) {
@@ -163,6 +165,8 @@ func (q *Queries) ListNotesSince(ctx context.Context, arg ListNotesSinceParams) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ChangeSeq,
+			&i.TrashedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -175,6 +179,36 @@ func (q *Queries) ListNotesSince(ctx context.Context, arg ListNotesSinceParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const restoreNote = `-- name: RestoreNote :execrows
+UPDATE notes
+SET trashed_at = NULL, updated_at = ?, updated_by_kind = ?, updated_by_user = ?, updated_by_token = ?, change_seq = ?
+WHERE id = ? AND trashed_at IS NOT NULL AND deleted_at IS NULL
+`
+
+type RestoreNoteParams struct {
+	UpdatedAt      string
+	UpdatedByKind  string
+	UpdatedByUser  *string
+	UpdatedByToken *string
+	ChangeSeq      int64
+	ID             string
+}
+
+func (q *Queries) RestoreNote(ctx context.Context, arg RestoreNoteParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, restoreNote,
+		arg.UpdatedAt,
+		arg.UpdatedByKind,
+		arg.UpdatedByUser,
+		arg.UpdatedByToken,
+		arg.ChangeSeq,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const snapshotNoteVersion = `-- name: SnapshotNoteVersion :exec
@@ -201,6 +235,38 @@ func (q *Queries) SnapshotNoteVersion(ctx context.Context, arg SnapshotNoteVersi
 		arg.ID,
 	)
 	return err
+}
+
+const trashNote = `-- name: TrashNote :execrows
+UPDATE notes
+SET trashed_at = ?, updated_at = ?, updated_by_kind = ?, updated_by_user = ?, updated_by_token = ?, change_seq = ?
+WHERE id = ? AND trashed_at IS NULL AND deleted_at IS NULL
+`
+
+type TrashNoteParams struct {
+	TrashedAt      *string
+	UpdatedAt      string
+	UpdatedByKind  string
+	UpdatedByUser  *string
+	UpdatedByToken *string
+	ChangeSeq      int64
+	ID             string
+}
+
+func (q *Queries) TrashNote(ctx context.Context, arg TrashNoteParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, trashNote,
+		arg.TrashedAt,
+		arg.UpdatedAt,
+		arg.UpdatedByKind,
+		arg.UpdatedByUser,
+		arg.UpdatedByToken,
+		arg.ChangeSeq,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateNoteBody = `-- name: UpdateNoteBody :execrows

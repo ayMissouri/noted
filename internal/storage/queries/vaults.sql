@@ -13,7 +13,7 @@ ORDER BY name COLLATE NOCASE;
 
 -- name: ListVaultsSince :many
 SELECT * FROM vaults
-WHERE change_seq > ? AND deleted_at IS NULL
+WHERE change_seq > ?
 ORDER BY change_seq;
 
 -- name: RenameVault :exec
