@@ -143,6 +143,56 @@ func TestMigrateRejectsBadNames(t *testing.T) {
 	}
 }
 
+func TestMigrateFkOffMarker(t *testing.T) {
+	db := testDB(t)
+	fsys := mig(map[string]string{
+		"0001_parent.sql": `CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id)); INSERT INTO p (id) VALUES (1); INSERT INTO c (id, p_id) VALUES (1, 1);`,
+		"0002_rebuild.fkoff.sql": `CREATE TABLE p_new (id INTEGER PRIMARY KEY);
+INSERT INTO p_new SELECT id FROM p;
+DROP TABLE p;
+ALTER TABLE p_new RENAME TO p;`,
+	})
+	if _, err := Migrate(context.Background(), db, fsys); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	var fk int
+	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&fk); err != nil || fk != 1 {
+		t.Errorf("foreign_keys after migration = %d, %v; want 1", fk, err)
+	}
+}
+
+func TestPopulatedRebuildRequiresFkOffMarker(t *testing.T) {
+	rebuild := `CREATE TABLE p_new (id INTEGER PRIMARY KEY);
+INSERT INTO p_new SELECT id FROM p;
+DROP TABLE p;
+ALTER TABLE p_new RENAME TO p;`
+	seed := `CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id)); INSERT INTO p (id) VALUES (1); INSERT INTO c (id, p_id) VALUES (1, 1);`
+
+	db := testDB(t)
+	fsys := mig(map[string]string{"0001_seed.sql": seed, "0002_rebuild.sql": rebuild})
+	if _, err := Migrate(context.Background(), db, fsys); err == nil {
+		t.Error("populated rebuild without the fkoff suffix succeeded, want FK failure")
+	}
+
+	db2 := testDB(t)
+	fsys2 := mig(map[string]string{"0001_seed.sql": seed, "0002_rebuild.fkoff.sql": rebuild})
+	if _, err := Migrate(context.Background(), db2, fsys2); err != nil {
+		t.Errorf("populated rebuild with the fkoff suffix failed: %v", err)
+	}
+}
+
+func TestMigrateFkOffDetectsDanglingReferences(t *testing.T) {
+	db := testDB(t)
+	fsys := mig(map[string]string{
+		"0001_parent.sql": `CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id)); INSERT INTO p (id) VALUES (1); INSERT INTO c (id, p_id) VALUES (1, 1);`,
+		"0002_break.fkoff.sql": `DELETE FROM p;`,
+	})
+	_, err := Migrate(context.Background(), db, fsys)
+	if err == nil || !strings.Contains(err.Error(), "dangling") {
+		t.Errorf("err = %v, want dangling reference failure", err)
+	}
+}
+
 func TestMigrateRejectsDuplicateVersions(t *testing.T) {
 	db := testDB(t)
 	fsys := mig(map[string]string{

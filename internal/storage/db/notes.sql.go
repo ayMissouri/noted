@@ -9,6 +9,30 @@ import (
 	"context"
 )
 
+const countLiveNotesByName = `-- name: CountLiveNotesByName :one
+SELECT count(*) FROM notes
+WHERE vault_id = ? AND folder_id = ? AND name = ? AND id != ? AND trashed_at IS NULL AND deleted_at IS NULL
+`
+
+type CountLiveNotesByNameParams struct {
+	VaultID  string
+	FolderID string
+	Name     string
+	ID       string
+}
+
+func (q *Queries) CountLiveNotesByName(ctx context.Context, arg CountLiveNotesByNameParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLiveNotesByName,
+		arg.VaultID,
+		arg.FolderID,
+		arg.Name,
+		arg.ID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createNote = `-- name: CreateNote :exec
 INSERT INTO notes (id, vault_id, folder_id, name, body, version, created_at, updated_at, updated_by_kind, updated_by_user, updated_by_token, change_seq)
 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)

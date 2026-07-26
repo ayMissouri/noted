@@ -322,6 +322,36 @@ func TestChangeCursor(t *testing.T) {
 	}
 }
 
+func TestTrashFreesTheName(t *testing.T) {
+	s, vaultID := testService(t)
+	ctx := context.Background()
+
+	first, err := s.Create(ctx, vaultID, "Reused", "original", System)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.Trash(ctx, first.ID, System); err != nil {
+		t.Fatalf("Trash: %v", err)
+	}
+
+	second, err := s.Create(ctx, vaultID, "Reused", "replacement", System)
+	if err != nil {
+		t.Fatalf("create with reclaimed name: %v", err)
+	}
+
+	if _, err := s.Restore(ctx, first.ID, System); !errors.Is(err, ErrNameTaken) {
+		t.Errorf("restore over live name err = %v, want ErrNameTaken", err)
+	}
+
+	if err := s.Trash(ctx, second.ID, System); err != nil {
+		t.Fatalf("trash second: %v", err)
+	}
+	restored, err := s.Restore(ctx, first.ID, System)
+	if err != nil || restored.Body != "original" {
+		t.Errorf("restore after freeing name = %q, %v; want original, nil", restored.Body, err)
+	}
+}
+
 func TestListSortsByName(t *testing.T) {
 	s, vaultID := testService(t)
 	ctx := context.Background()

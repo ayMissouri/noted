@@ -327,6 +327,15 @@ func (s *Service) Restore(ctx context.Context, id string, actor Actor) (db.Note,
 	if existing.TrashedAt == nil {
 		return existing, nil
 	}
+	collisions, err := qtx.CountLiveNotesByName(ctx, db.CountLiveNotesByNameParams{
+		VaultID: existing.VaultID, FolderID: existing.FolderID, Name: existing.Name, ID: id,
+	})
+	if err != nil {
+		return db.Note{}, fmt.Errorf("restore note: %w", err)
+	}
+	if collisions > 0 {
+		return db.Note{}, ErrNameTaken
+	}
 	seq, err := qtx.NextChangeSeq(ctx)
 	if err != nil {
 		return db.Note{}, fmt.Errorf("restore note: %w", err)

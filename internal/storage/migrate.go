@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -15,6 +16,7 @@ type migration struct {
 	version int
 	name    string
 	sql     string
+	fkOff   bool
 }
 
 func Migrate(ctx context.Context, db *sql.DB, fsys fs.FS) (int, error) {
@@ -79,6 +81,29 @@ func Migrate(ctx context.Context, db *sql.DB, fsys fs.FS) (int, error) {
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, m migration) error {
+	if m.fkOff {
+		if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			return fmt.Errorf("migration %04d_%s: disable foreign keys: %w", m.version, m.name, err)
+		}
+		defer db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
+	}
+	if err := applyMigrationTx(ctx, db, m); err != nil {
+		return err
+	}
+	if m.fkOff {
+		var table, rowid, parent, fkid any
+		err := db.QueryRowContext(ctx, "PRAGMA foreign_key_check").Scan(&table, &rowid, &parent, &fkid)
+		if err == nil {
+			return fmt.Errorf("migration %04d_%s left dangling references in %v", m.version, m.name, table)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("migration %04d_%s: foreign key check: %w", m.version, m.name, err)
+		}
+	}
+	return nil
+}
+
+func applyMigrationTx(ctx context.Context, db *sql.DB, m migration) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("migration %04d_%s: %w", m.version, m.name, err)
@@ -109,7 +134,7 @@ func loadMigrations(fsys fs.FS) ([]migration, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
 			continue
 		}
-		version, name, err := parseMigrationName(e.Name())
+		version, name, fkOff, err := parseMigrationName(e.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -121,21 +146,24 @@ func loadMigrations(fsys fs.FS) ([]migration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read migration %s: %w", e.Name(), err)
 		}
-		migs = append(migs, migration{version: version, name: name, sql: string(body)})
+		migs = append(migs, migration{version: version, name: name, sql: string(body), fkOff: fkOff})
 	}
 	sort.Slice(migs, func(i, j int) bool { return migs[i].version < migs[j].version })
 	return migs, nil
 }
 
-func parseMigrationName(filename string) (int, string, error) {
+// the .fkoff.sql suffix runs the migration with foreign keys disabled.
+func parseMigrationName(filename string) (version int, name string, fkOff bool, err error) {
 	base := strings.TrimSuffix(filename, ".sql")
+	fkOff = strings.HasSuffix(base, ".fkoff")
+	base = strings.TrimSuffix(base, ".fkoff")
 	num, name, ok := strings.Cut(base, "_")
 	if !ok || num == "" || name == "" {
-		return 0, "", fmt.Errorf("migration %s: want NNNN_name.sql", filename)
+		return 0, "", false, fmt.Errorf("migration %s: want NNNN_name.sql", filename)
 	}
-	version, err := strconv.Atoi(num)
+	version, err = strconv.Atoi(num)
 	if err != nil || version <= 0 {
-		return 0, "", fmt.Errorf("migration %s: want NNNN_name.sql with a positive number", filename)
+		return 0, "", false, fmt.Errorf("migration %s: want NNNN_name.sql with a positive number", filename)
 	}
-	return version, name, nil
+	return version, name, fkOff, nil
 }
