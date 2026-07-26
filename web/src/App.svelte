@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { api, ApiError, type Note, type NoteListItem } from './lib/api'
+  import { api, ApiError, clearToken, hasToken, type Note, type NoteListItem } from './lib/api'
   import Editor from './lib/Editor.svelte'
+  import Login from './lib/Login.svelte'
   import Setup from './lib/Setup.svelte'
 
-  let screen = $state<'loading' | 'setup' | 'app'>('loading')
+  let screen = $state<'loading' | 'setup' | 'login' | 'app'>('loading')
   let vaultId = $state<string | null>(null)
   let vaultName = $state('')
   let notes = $state<NoteListItem[]>([])
@@ -20,11 +21,14 @@
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
     }
-    await load()
-    screen = 'app'
+    if (!hasToken()) {
+      screen = 'login'
+      return
+    }
+    await enter()
   }
 
-  async function load() {
+  async function enter() {
     try {
       const vaults = await api.vaults()
       vaultId = vaults[0].id
@@ -32,14 +36,23 @@
       notes = await api.notes(vaultId)
       error = ''
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        clearToken()
+        screen = 'login'
+        return
+      }
       error = e instanceof Error ? e.message : String(e)
     }
+    screen = 'app'
   }
   boot()
 
-  async function onSetupComplete() {
-    await load()
-    screen = 'app'
+  function logout() {
+    clearToken()
+    notes = []
+    current = null
+    vaultId = null
+    screen = 'login'
   }
 
   async function open(id: string) {
@@ -77,7 +90,9 @@
 </script>
 
 {#if screen === 'setup'}
-  <Setup oncomplete={onSetupComplete} />
+  <Setup oncomplete={enter} />
+{:else if screen === 'login'}
+  <Login oncomplete={enter} />
 {:else if screen === 'app'}
 <div class="layout">
   <aside>
@@ -97,6 +112,7 @@
         <p class="empty">No notes yet.</p>
       {/if}
     </nav>
+    <button class="logout" onclick={logout}>Log out</button>
   </aside>
 
   <main>
@@ -161,6 +177,15 @@
   }
   .note.active {
     background: var(--active);
+  }
+  .logout {
+    margin-top: 1.5rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    padding: 0.35rem 0.6rem;
+    color: var(--muted);
+    cursor: pointer;
   }
   main {
     min-width: 0;

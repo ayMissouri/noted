@@ -4,22 +4,15 @@
   let { oncomplete }: { oncomplete: () => void } = $props()
 
   let username = $state('')
-  let email = $state('')
   let password = $state('')
-  let confirm = $state('')
   let busy = $state(false)
   let error = $state('')
 
   async function submit(e: SubmitEvent) {
     e.preventDefault()
-    if (password !== confirm) {
-      error = 'The passwords do not match.'
-      return
-    }
     busy = true
     error = ''
     try {
-      await api.setup(username.trim(), email.trim(), password)
       await api.login(username.trim(), password)
       oncomplete()
     } catch (err) {
@@ -30,41 +23,29 @@
   }
 </script>
 
-<main class="setup">
+<main class="login">
   <h1>noted</h1>
-  <p>Welcome. Create the admin account for this server. It manages every other account.</p>
   <form onsubmit={submit}>
     <label>
       Username
       <input bind:value={username} autocomplete="username" required />
     </label>
     <label>
-      Email <span class="optional">(optional)</span>
-      <input type="email" bind:value={email} autocomplete="email" />
-    </label>
-    <label>
       Password
-      <input type="password" bind:value={password} autocomplete="new-password" required minlength="8" />
-    </label>
-    <label>
-      Confirm password
-      <input type="password" bind:value={confirm} autocomplete="new-password" required />
+      <input type="password" bind:value={password} autocomplete="current-password" required />
     </label>
     {#if error}
       <p class="error">{error}</p>
     {/if}
-    <button disabled={busy}>{busy ? 'Creating…' : 'Create admin account'}</button>
+    <button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
   </form>
 </main>
 
 <style>
-  .setup {
+  .login {
     max-width: 22rem;
     margin: 4rem auto;
     padding: 0 1rem;
-  }
-  h1 {
-    margin-bottom: 0.25rem;
   }
   form {
     display: flex;
@@ -77,9 +58,6 @@
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.9rem;
-  }
-  .optional {
-    color: var(--muted);
   }
   input {
     padding: 0.45rem 0.6rem;

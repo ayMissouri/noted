@@ -38,11 +38,56 @@ export class ApiError extends Error {
   }
 }
 
+const TOKEN_KEY = 'noted.token'
+let token: string | null = localStorage.getItem(TOKEN_KEY)
+
+export function hasToken(): boolean {
+  return token !== null
+}
+
+export function clearToken(): void {
+  token = null
+  localStorage.removeItem(TOKEN_KEY)
+}
+
+function storeToken(t: string): void {
+  token = t
+  localStorage.setItem(TOKEN_KEY, t)
+}
+
+function deviceName(): string {
+  const ua = navigator.userAgent
+  const browser = ua.includes('Firefox')
+    ? 'Firefox'
+    : ua.includes('Edg')
+      ? 'Edge'
+      : ua.includes('Chrome')
+        ? 'Chrome'
+        : ua.includes('Safari')
+          ? 'Safari'
+          : 'Browser'
+  const os = ua.includes('Windows')
+    ? 'Windows'
+    : ua.includes('Mac')
+      ? 'macOS'
+      : ua.includes('Android')
+        ? 'Android'
+        : ua.includes('iPhone') || ua.includes('iPad')
+          ? 'iOS'
+          : ua.includes('Linux')
+            ? 'Linux'
+            : ''
+  return os ? `${browser} on ${os}` : browser
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(path, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       ...init,
     })
   } catch {
@@ -69,6 +114,15 @@ export const api = {
     request<User>('/api/v1/setup', {
       method: 'POST',
       body: JSON.stringify({ username, email, password }),
+    }),
+
+  login: (username: string, password: string) =>
+    request<{ token: string; user: User }>('/api/v1/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, device_name: deviceName() }),
+    }).then((r) => {
+      storeToken(r.token)
+      return r.user
     }),
 
   vaults: () => request<{ vaults: Vault[] }>('/api/v1/vaults').then((r) => r.vaults),
