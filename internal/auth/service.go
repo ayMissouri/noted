@@ -125,6 +125,14 @@ func (s *Service) CreateFirstAdmin(ctx context.Context, username, email, passwor
 	return u, nil
 }
 
+func (s *Service) Users(ctx context.Context) ([]db.User, error) {
+	users, err := s.q.ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	return users, nil
+}
+
 func (s *Service) UserCount(ctx context.Context) (int64, error) {
 	n, err := s.q.CountUsers(ctx)
 	if err != nil {

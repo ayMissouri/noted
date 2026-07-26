@@ -10,6 +10,11 @@ WHERE id = ? AND deleted_at IS NULL;
 SELECT * FROM users
 WHERE username = ? AND deleted_at IS NULL;
 
+-- name: ListUsers :many
+SELECT * FROM users
+WHERE deleted_at IS NULL
+ORDER BY username COLLATE NOCASE;
+
 -- name: CountUsers :one
 SELECT count(*) FROM users
 WHERE deleted_at IS NULL;

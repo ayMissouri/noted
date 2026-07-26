@@ -28,6 +28,10 @@ func (s *Server) routes() {
 	authed.GET("/notes/:id/html", s.handleNoteHTML)
 	authed.POST("/render", s.handleRender)
 
+	admin := authed.Group("", s.requireAdmin())
+	admin.GET("/users", s.handleListUsers)
+	admin.POST("/users", s.handleCreateUser)
+
 	s.echo.RouteNotFound("/*", s.spaHandler())
 }
 

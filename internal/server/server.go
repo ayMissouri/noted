@@ -78,6 +78,7 @@ var domainErrors = []struct {
 	{auth.ErrInvalidCredentials, http.StatusUnauthorized, "invalid_credentials"},
 	{auth.ErrInvalidToken, http.StatusUnauthorized, "invalid_token"},
 	{errAuthRequired, http.StatusUnauthorized, "auth_required"},
+	{errAdminRequired, http.StatusForbidden, "admin_required"},
 }
 
 type errorBody struct {

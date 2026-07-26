@@ -12,7 +12,10 @@ import (
 	"github.com/ayMissouri/noted/internal/storage/db"
 )
 
-var errAuthRequired = errors.New("authentication required")
+var (
+	errAuthRequired  = errors.New("authentication required")
+	errAdminRequired = errors.New("admin access required")
+)
 
 const identityContextKey = "noted.identity"
 
@@ -34,6 +37,21 @@ func (s *Server) requireAuth() echo.MiddlewareFunc {
 				return err
 			}
 			c.Set(identityContextKey, identity{User: user, Token: token})
+			return next(c)
+		}
+	}
+}
+
+func (s *Server) requireAdmin() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			id, ok := currentIdentity(c)
+			if !ok {
+				return errAuthRequired
+			}
+			if id.User.IsAdmin != 1 {
+				return errAdminRequired
+			}
 			return next(c)
 		}
 	}

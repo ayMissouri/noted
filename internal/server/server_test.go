@@ -263,6 +263,48 @@ func TestDevicesListAndRevoke(t *testing.T) {
 	}
 }
 
+func TestAdminUserManagement(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.do(t, http.MethodPost, "/api/v1/users", `{"username":"bob","password":"`+testPassword+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user = %d: %s", rec.Code, rec.Body.String())
+	}
+	if created := decode[userJSON](t, rec); created.IsAdmin {
+		t.Error("bob is an admin, want regular user")
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/users", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list users = %d", rec.Code)
+	}
+	if users := decode[map[string][]userJSON](t, rec)["users"]; len(users) != 2 {
+		t.Errorf("users = %d, want 2", len(users))
+	}
+
+	rec = e.doAnon(t, http.MethodPost, "/api/v1/login", `{"username":"bob","password":"`+testPassword+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob login = %d", rec.Code)
+	}
+	out := decode[map[string]json.RawMessage](t, rec)
+	var bobSecret string
+	if err := json.Unmarshal(out["token"], &bobSecret); err != nil {
+		t.Fatalf("decode bob token: %v", err)
+	}
+	bob := &env{srv: e.srv, bearer: bobSecret}
+
+	if rec := bob.do(t, http.MethodGet, "/api/v1/users", ""); rec.Code != http.StatusForbidden || errCode(t, rec) != "admin_required" {
+		t.Errorf("bob list users = %d %s, want 403 admin_required", rec.Code, rec.Body.String())
+	}
+	if rec := bob.do(t, http.MethodPost, "/api/v1/users", `{"username":"eve","password":"`+testPassword+`"}`); rec.Code != http.StatusForbidden {
+		t.Errorf("bob create user = %d, want 403", rec.Code)
+	}
+
+	if rec := e.do(t, http.MethodPost, "/api/v1/users", `{"username":"bob","password":"`+testPassword+`"}`); rec.Code != http.StatusConflict || errCode(t, rec) != "username_taken" {
+		t.Errorf("duplicate username = %d %s, want 409 username_taken", rec.Code, rec.Body.String())
+	}
+}
+
 func TestVaultManagement(t *testing.T) {
 	e := newEnv(t)
 

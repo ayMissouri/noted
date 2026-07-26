@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, ApiError, clearToken, hasToken, type Note, type NoteListItem } from './lib/api'
+  import { api, ApiError, clearToken, hasToken, type Note, type NoteListItem, type Vault } from './lib/api'
   import Devices from './lib/Devices.svelte'
   import Editor from './lib/Editor.svelte'
   import Login from './lib/Login.svelte'
@@ -7,8 +7,8 @@
 
   let screen = $state<'loading' | 'setup' | 'login' | 'app'>('loading')
   let view = $state<'notes' | 'settings'>('notes')
+  let vaults = $state<Vault[]>([])
   let vaultId = $state<string | null>(null)
-  let vaultName = $state('')
   let notes = $state<NoteListItem[]>([])
   let current = $state<Note | null>(null)
   let newName = $state('')
@@ -32,10 +32,13 @@
 
   async function enter() {
     try {
-      const vaults = await api.vaults()
-      vaultId = vaults[0].id
-      vaultName = vaults[0].name
-      notes = await api.notes(vaultId)
+      vaults = await api.vaults()
+      if (vaults.length > 0) {
+        await switchVault(vaults[0].id)
+      } else {
+        vaultId = null
+        notes = []
+      }
       error = ''
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -48,6 +51,69 @@
     screen = 'app'
   }
   boot()
+
+  async function switchVault(id: string) {
+    vaultId = id
+    current = null
+    notes = await api.notes(id)
+  }
+
+  async function onVaultChange() {
+    if (!vaultId) return
+    try {
+      await switchVault(vaultId)
+      error = ''
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  async function createVaultUI() {
+    const name = window.prompt('Name for the new vault:')
+    if (!name?.trim()) return
+    try {
+      const vault = await api.createVault(name.trim())
+      vaults = await api.vaults()
+      await switchVault(vault.id)
+      error = ''
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : 'could not create the vault'
+    }
+  }
+
+  async function renameVaultUI() {
+    if (!vaultId) return
+    const currentName = vaults.find((v) => v.id === vaultId)?.name ?? ''
+    const name = window.prompt('Rename vault:', currentName)
+    if (!name?.trim() || name.trim() === currentName) return
+    try {
+      await api.renameVault(vaultId, name.trim())
+      vaults = await api.vaults()
+      error = ''
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : 'could not rename the vault'
+    }
+  }
+
+  async function deleteVaultUI() {
+    if (!vaultId) return
+    const name = vaults.find((v) => v.id === vaultId)?.name ?? 'this vault'
+    if (!window.confirm(`Delete the vault "${name}"? Its notes become inaccessible.`)) return
+    try {
+      await api.deleteVault(vaultId)
+      vaults = await api.vaults()
+      if (vaults.length > 0) {
+        await switchVault(vaults[0].id)
+      } else {
+        vaultId = null
+        notes = []
+        current = null
+      }
+      error = ''
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : 'could not delete the vault'
+    }
+  }
 
   function logout() {
     clearToken()
@@ -105,7 +171,18 @@
 <div class="layout">
   <aside>
     <h1>noted</h1>
-    <p class="vault">{vaultName}</p>
+    <div class="vaultbar">
+      <select bind:value={vaultId} onchange={onVaultChange} aria-label="Vault">
+        {#each vaults as v (v.id)}
+          <option value={v.id}>{v.name}</option>
+        {/each}
+      </select>
+      <button class="ghost" title="New vault" onclick={createVaultUI}>+</button>
+    </div>
+    <div class="vaultactions">
+      <button class="ghost" onclick={renameVaultUI} disabled={!vaultId}>Rename</button>
+      <button class="ghost" onclick={deleteVaultUI} disabled={!vaultId}>Delete</button>
+    </div>
     <form onsubmit={createNote}>
       <input placeholder="New note name" bind:value={newName} />
       <button type="submit">Add</button>
@@ -136,8 +213,10 @@
       <Devices oncurrentrevoked={logout} />
     {:else if current}
       <Editor note={current} onsaved={onSaved} />
-    {:else}
+    {:else if vaultId}
       <p class="empty">Pick a note, or create one.</p>
+    {:else}
+      <p class="empty">No vaults. Create one with the + button.</p>
     {/if}
   </main>
 </div>
@@ -158,10 +237,24 @@
     margin: 0 0 0.25rem;
     font-size: 1.3rem;
   }
-  .vault {
-    margin: 0 0 1rem;
-    color: var(--muted);
-    font-size: 0.85rem;
+  .vaultbar {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+  .vaultbar select {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+  }
+  .vaultactions {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .vaultactions .ghost {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
   }
   form {
     display: flex;

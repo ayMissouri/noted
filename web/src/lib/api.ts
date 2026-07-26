@@ -144,6 +144,18 @@ export const api = {
 
   vaults: () => request<{ vaults: Vault[] }>('/api/v1/vaults').then((r) => r.vaults),
 
+  createVault: (name: string) =>
+    request<Vault>('/api/v1/vaults', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  renameVault: (id: string, name: string) =>
+    request<Vault>(`/api/v1/vaults/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteVault: (id: string) =>
+    request<void>(`/api/v1/vaults/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   notes: (vaultId: string) =>
     request<{ notes: NoteListItem[] }>(
       `/api/v1/vaults/${encodeURIComponent(vaultId)}/notes`,
