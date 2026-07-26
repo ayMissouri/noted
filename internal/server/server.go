@@ -73,6 +73,7 @@ var domainErrors = []struct {
 	{auth.ErrInvalidEmail, http.StatusUnprocessableEntity, "invalid_email"},
 	{auth.ErrWeakPassword, http.StatusUnprocessableEntity, "weak_password"},
 	{auth.ErrUserNotFound, http.StatusNotFound, "not_found"},
+	{auth.ErrTokenNotFound, http.StatusNotFound, "not_found"},
 	{auth.ErrInvalidCredentials, http.StatusUnauthorized, "invalid_credentials"},
 	{auth.ErrInvalidToken, http.StatusUnauthorized, "invalid_token"},
 	{errAuthRequired, http.StatusUnauthorized, "auth_required"},

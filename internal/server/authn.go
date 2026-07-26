@@ -58,6 +58,7 @@ type tokenJSON struct {
 	Kind       string  `json:"kind"`
 	CreatedAt  string  `json:"created_at"`
 	LastSeenAt *string `json:"last_seen_at"`
+	Current    bool    `json:"current"`
 }
 
 type loginRequest struct {
@@ -89,6 +90,7 @@ func (s *Server) handleLogin(c *echo.Context) error {
 		"device": tokenJSON{
 			ID: token.ID, Name: token.Name, Kind: token.Kind,
 			CreatedAt: token.CreatedAt, LastSeenAt: token.LastSeenAt,
+			Current: true,
 		},
 	})
 }

@@ -207,6 +207,62 @@ func TestNoteWritesAreAttributed(t *testing.T) {
 	}
 }
 
+func TestDevicesListAndRevoke(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.doAnon(t, http.MethodPost, "/api/v1/login",
+		`{"username":"admin","password":"`+testPassword+`","device_name":"phone"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second login = %d", rec.Code)
+	}
+	out := decode[map[string]json.RawMessage](t, rec)
+	var phoneSecret string
+	if err := json.Unmarshal(out["token"], &phoneSecret); err != nil {
+		t.Fatalf("decode token: %v", err)
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/devices", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list devices = %d: %s", rec.Code, rec.Body.String())
+	}
+	list := decode[map[string][]tokenJSON](t, rec)
+	devices := list["devices"]
+	if len(devices) != 2 {
+		t.Fatalf("devices = %d entries, want 2", len(devices))
+	}
+	var phoneID string
+	currentCount := 0
+	for _, d := range devices {
+		if d.Current {
+			currentCount++
+			if d.Name != "test device" {
+				t.Errorf("current device = %q, want the caller's", d.Name)
+			}
+		}
+		if d.Name == "phone" {
+			phoneID = d.ID
+		}
+	}
+	if currentCount != 1 || phoneID == "" {
+		t.Fatalf("current flags = %d, phone found = %v", currentCount, phoneID != "")
+	}
+
+	if rec := e.do(t, http.MethodDelete, "/api/v1/devices/"+phoneID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d: %s", rec.Code, rec.Body.String())
+	}
+	phone := &env{srv: e.srv, bearer: phoneSecret}
+	if rec := phone.do(t, http.MethodGet, "/api/v1/vaults", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("revoked device still works: %d", rec.Code)
+	}
+	rec = e.do(t, http.MethodGet, "/api/v1/devices", "")
+	if got := decode[map[string][]tokenJSON](t, rec); len(got["devices"]) != 1 {
+		t.Errorf("devices after revoke = %d, want 1", len(got["devices"]))
+	}
+	if rec := e.do(t, http.MethodDelete, "/api/v1/devices/"+phoneID, ""); rec.Code != http.StatusNotFound {
+		t.Errorf("double revoke = %d, want 404", rec.Code)
+	}
+}
+
 func TestListVaults(t *testing.T) {
 	e := newEnv(t)
 	rec := e.do(t, http.MethodGet, "/api/v1/vaults", "")

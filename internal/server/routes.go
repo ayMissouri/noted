@@ -15,6 +15,8 @@ func (s *Server) routes() {
 	api.POST("/login", s.handleLogin)
 
 	authed := api.Group("", s.requireAuth())
+	authed.GET("/devices", s.handleListDevices)
+	authed.DELETE("/devices/:id", s.handleRevokeDevice)
 	authed.GET("/vaults", s.handleListVaults)
 	authed.GET("/vaults/:vaultID/notes", s.handleListNotes)
 	authed.POST("/vaults/:vaultID/notes", s.handleCreateNote)
