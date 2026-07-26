@@ -168,3 +168,14 @@ func (s *Server) requestLogger() echo.MiddlewareFunc {
 func requestID(c *echo.Context) string {
 	return c.Response().Header().Get(echo.HeaderXRequestID)
 }
+
+// authRateLimiter allows 10 attempts per IP.
+func authRateLimiter() echo.MiddlewareFunc {
+	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
+			Rate:      0.1,
+			Burst:     10,
+			ExpiresIn: 10 * time.Minute,
+		}),
+	})
+}

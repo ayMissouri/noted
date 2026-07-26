@@ -208,7 +208,7 @@ func TestVaultOwnership(t *testing.T) {
 		t.Fatalf("owner Create: %v", err)
 	}
 
-	if _, err := s.List(ctx, vaultA, bob); !errors.Is(err, ErrVaultNotFound) {
+	if _, _, err := s.List(ctx, vaultA, bob, 0); !errors.Is(err, ErrVaultNotFound) {
 		t.Errorf("stranger List err = %v, want ErrVaultNotFound", err)
 	}
 	if _, err := s.Get(ctx, note.ID, bob); !errors.Is(err, ErrNotFound) {
@@ -229,11 +229,11 @@ func TestVaultOwnership(t *testing.T) {
 		t.Errorf("admin Get err = %v, want nil", err)
 	}
 
-	if _, err := s.List(ctx, defaultVault, bob); err != nil {
+	if _, _, err := s.List(ctx, defaultVault, bob, 0); err != nil {
 		t.Errorf("unowned vault List err = %v, want nil", err)
 	}
 
-	vaults, err := s.Vaults(ctx, bob)
+	vaults, _, err := s.Vaults(ctx, bob, 0)
 	if err != nil {
 		t.Fatalf("Vaults: %v", err)
 	}
@@ -286,6 +286,42 @@ func TestVaultLifecycle(t *testing.T) {
 	}
 }
 
+func TestChangeCursor(t *testing.T) {
+	s, vaultID := testService(t)
+	ctx := context.Background()
+
+	a, err := s.Create(ctx, vaultID, "First", "", System)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	b, err := s.Create(ctx, vaultID, "Second", "", System)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	all, cursor, err := s.List(ctx, vaultID, System, 0)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("full list = %d notes, %v", len(all), err)
+	}
+	if cursor < b.ChangeSeq {
+		t.Errorf("cursor = %d, want at least %d", cursor, b.ChangeSeq)
+	}
+
+	if _, err := s.Update(ctx, a.ID, a.Version, "changed", System); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	changed, cursor2, err := s.List(ctx, vaultID, System, cursor)
+	if err != nil {
+		t.Fatalf("since list: %v", err)
+	}
+	if len(changed) != 1 || changed[0].ID != a.ID {
+		t.Errorf("since list = %+v, want only the updated note", changed)
+	}
+	if empty, _, err := s.List(ctx, vaultID, System, cursor2); err != nil || len(empty) != 0 {
+		t.Errorf("list since latest cursor = %d notes, %v; want 0, nil", len(empty), err)
+	}
+}
+
 func TestListSortsByName(t *testing.T) {
 	s, vaultID := testService(t)
 	ctx := context.Background()
@@ -294,7 +330,7 @@ func TestListSortsByName(t *testing.T) {
 			t.Fatalf("Create %s: %v", name, err)
 		}
 	}
-	rows, err := s.List(ctx, vaultID, System)
+	rows, _, err := s.List(ctx, vaultID, System, 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

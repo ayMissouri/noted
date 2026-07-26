@@ -92,6 +92,43 @@ func (q *Queries) ListVaults(ctx context.Context) ([]Vault, error) {
 	return items, nil
 }
 
+const listVaultsSince = `-- name: ListVaultsSince :many
+SELECT id, owner_id, name, created_at, updated_at, deleted_at, change_seq FROM vaults
+WHERE change_seq > ? AND deleted_at IS NULL
+ORDER BY change_seq
+`
+
+func (q *Queries) ListVaultsSince(ctx context.Context, changeSeq int64) ([]Vault, error) {
+	rows, err := q.db.QueryContext(ctx, listVaultsSince, changeSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Vault
+	for rows.Next() {
+		var i Vault
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ChangeSeq,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameVault = `-- name: RenameVault :exec
 UPDATE vaults SET name = ?, updated_at = ?, change_seq = ?
 WHERE id = ? AND deleted_at IS NULL

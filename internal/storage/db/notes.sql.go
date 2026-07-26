@@ -122,6 +122,61 @@ func (q *Queries) ListNotes(ctx context.Context, vaultID string) ([]ListNotesRow
 	return items, nil
 }
 
+const listNotesSince = `-- name: ListNotesSince :many
+SELECT id, vault_id, folder_id, name, version, created_at, updated_at, change_seq
+FROM notes
+WHERE vault_id = ? AND change_seq > ? AND trashed_at IS NULL AND deleted_at IS NULL
+ORDER BY change_seq
+`
+
+type ListNotesSinceParams struct {
+	VaultID   string
+	ChangeSeq int64
+}
+
+type ListNotesSinceRow struct {
+	ID        string
+	VaultID   string
+	FolderID  string
+	Name      string
+	Version   int64
+	CreatedAt string
+	UpdatedAt string
+	ChangeSeq int64
+}
+
+func (q *Queries) ListNotesSince(ctx context.Context, arg ListNotesSinceParams) ([]ListNotesSinceRow, error) {
+	rows, err := q.db.QueryContext(ctx, listNotesSince, arg.VaultID, arg.ChangeSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListNotesSinceRow
+	for rows.Next() {
+		var i ListNotesSinceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.VaultID,
+			&i.FolderID,
+			&i.Name,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ChangeSeq,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const snapshotNoteVersion = `-- name: SnapshotNoteVersion :exec
 INSERT INTO note_versions (note_id, version, body, name, folder_path, saved_at, actor_kind, actor_user, actor_token)
 SELECT n.id, n.version, n.body, n.name, f.path, ?, ?, ?, ?

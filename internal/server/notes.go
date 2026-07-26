@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v5"
 
@@ -44,8 +45,24 @@ func toNoteJSON(n db.Note) noteJSON {
 	}
 }
 
+func sinceParam(c *echo.Context) (int64, error) {
+	raw := c.QueryParam("since")
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "since must be a non-negative integer cursor")
+	}
+	return n, nil
+}
+
 func (s *Server) handleListVaults(c *echo.Context) error {
-	vaults, err := s.notes.Vaults(c.Request().Context(), actorFrom(c))
+	since, err := sinceParam(c)
+	if err != nil {
+		return err
+	}
+	vaults, cursor, err := s.notes.Vaults(c.Request().Context(), actorFrom(c), since)
 	if err != nil {
 		return err
 	}
@@ -55,11 +72,15 @@ func (s *Server) handleListVaults(c *echo.Context) error {
 			ID: v.ID, Name: v.Name, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, ChangeSeq: v.ChangeSeq,
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"vaults": out})
+	return c.JSON(http.StatusOK, map[string]any{"vaults": out, "cursor": cursor})
 }
 
 func (s *Server) handleListNotes(c *echo.Context) error {
-	rows, err := s.notes.List(c.Request().Context(), c.Param("vaultID"), actorFrom(c))
+	since, err := sinceParam(c)
+	if err != nil {
+		return err
+	}
+	rows, cursor, err := s.notes.List(c.Request().Context(), c.Param("vaultID"), actorFrom(c), since)
 	if err != nil {
 		return err
 	}
@@ -70,7 +91,7 @@ func (s *Server) handleListNotes(c *echo.Context) error {
 			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq,
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"notes": out})
+	return c.JSON(http.StatusOK, map[string]any{"notes": out, "cursor": cursor})
 }
 
 type createNoteRequest struct {

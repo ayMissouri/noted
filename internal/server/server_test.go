@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -114,6 +115,16 @@ func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	return v
 }
 
+type vaultsListResponse struct {
+	Vaults []vaultJSON `json:"vaults"`
+	Cursor int64       `json:"cursor"`
+}
+
+type notesListResponse struct {
+	Notes  []noteListItemJSON `json:"notes"`
+	Cursor int64              `json:"cursor"`
+}
+
 func errCode(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
 	env := decode[map[string]errorBody](t, rec)
@@ -152,6 +163,29 @@ func TestCORS(t *testing.T) {
 	bare.srv.Handler().ServeHTTP(rec, req)
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("unconfigured server ACAO = %q, want empty", got)
+	}
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	e := newEnv(t)
+
+	var last *httptest.ResponseRecorder
+	for range 10 {
+		last = e.doAnon(t, http.MethodPost, "/api/v1/login", `{"username":"admin","password":"wrong"}`)
+	}
+	if last.Code != http.StatusUnauthorized {
+		t.Fatalf("attempt 10 = %d, want 401 (still within burst)", last.Code)
+	}
+	rec := e.doAnon(t, http.MethodPost, "/api/v1/login", `{"username":"admin","password":"wrong"}`)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("attempt 11 = %d, want 429", rec.Code)
+	}
+	if got := errCode(t, rec); got != "too_many_requests" {
+		t.Errorf("code = %q, want too_many_requests", got)
+	}
+
+	if rec := e.do(t, http.MethodGet, "/api/v1/vaults", ""); rec.Code != http.StatusOK {
+		t.Errorf("authenticated API limited too: %d, want 200", rec.Code)
 	}
 }
 
@@ -404,7 +438,7 @@ func TestVaultManagement(t *testing.T) {
 		t.Fatalf("delete = %d: %s", rec.Code, rec.Body.String())
 	}
 	rec = e.do(t, http.MethodGet, "/api/v1/vaults", "")
-	for _, v := range decode[map[string][]vaultJSON](t, rec)["vaults"] {
+	for _, v := range decode[vaultsListResponse](t, rec).Vaults {
 		if v.ID == created.ID {
 			t.Error("deleted vault still listed")
 		}
@@ -420,9 +454,9 @@ func TestListVaults(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	out := decode[map[string][]vaultJSON](t, rec)
-	if len(out["vaults"]) != 1 || out["vaults"][0].ID != e.vaultID {
-		t.Errorf("vaults = %+v, want the default vault %s", out["vaults"], e.vaultID)
+	out := decode[vaultsListResponse](t, rec)
+	if len(out.Vaults) != 1 || out.Vaults[0].ID != e.vaultID {
+		t.Errorf("vaults = %+v, want the default vault %s", out.Vaults, e.vaultID)
 	}
 }
 
@@ -455,9 +489,9 @@ func TestCreateGetUpdateNote(t *testing.T) {
 	}
 
 	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes", "")
-	out := decode[map[string][]noteListItemJSON](t, rec)
-	if len(out["notes"]) != 1 || out["notes"][0].Version != 2 {
-		t.Errorf("list = %+v, want one note at version 2", out["notes"])
+	out := decode[notesListResponse](t, rec)
+	if len(out.Notes) != 1 || out.Notes[0].Version != 2 {
+		t.Errorf("list = %+v, want one note at version 2", out.Notes)
 	}
 }
 
@@ -618,6 +652,44 @@ func TestNoteHTML(t *testing.T) {
 
 	if rec := e.do(t, http.MethodGet, "/api/v1/notes/none/html", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("missing note: status = %d, want 404", rec.Code)
+	}
+}
+
+func TestListSinceCursor(t *testing.T) {
+	e := newEnv(t)
+
+	if rec := e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes", `{"name":"One","body":"1"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("seed: %d", rec.Code)
+	}
+	rec := e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes", `{"name":"Two","body":"2"}`)
+	two := decode[noteJSON](t, rec)
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes", "")
+	full := decode[notesListResponse](t, rec)
+	if len(full.Notes) != 2 || full.Cursor == 0 {
+		t.Fatalf("full = %d notes cursor %d", len(full.Notes), full.Cursor)
+	}
+
+	if rec := e.do(t, http.MethodPut, "/api/v1/notes/"+two.ID, `{"body":"2b","base_version":1}`); rec.Code != http.StatusOK {
+		t.Fatalf("update: %d", rec.Code)
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes?since="+strconv.FormatInt(full.Cursor, 10), "")
+	inc := decode[notesListResponse](t, rec)
+	if len(inc.Notes) != 1 || inc.Notes[0].ID != two.ID {
+		t.Errorf("incremental = %+v, want only note Two", inc.Notes)
+	}
+	if inc.Cursor <= full.Cursor {
+		t.Errorf("cursor did not advance: %d -> %d", full.Cursor, inc.Cursor)
+	}
+
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes?since="+strconv.FormatInt(inc.Cursor, 10), "")
+	if empty := decode[notesListResponse](t, rec); len(empty.Notes) != 0 {
+		t.Errorf("list since latest = %d notes, want 0", len(empty.Notes))
+	}
+
+	if rec := e.do(t, http.MethodGet, "/api/v1/vaults/"+e.vaultID+"/notes?since=banana", ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad since = %d, want 400", rec.Code)
 	}
 }
 

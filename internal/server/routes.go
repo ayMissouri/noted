@@ -10,9 +10,10 @@ func (s *Server) routes() {
 	s.echo.GET("/healthz", s.handleHealthz)
 
 	api := s.echo.Group("/api/v1")
+	authLimit := authRateLimiter()
 	api.GET("/setup", s.handleSetupStatus)
-	api.POST("/setup", s.handleSetup)
-	api.POST("/login", s.handleLogin)
+	api.POST("/setup", s.handleSetup, authLimit)
+	api.POST("/login", s.handleLogin, authLimit)
 
 	authed := api.Group("", s.requireAuth())
 	authed.GET("/devices", s.handleListDevices)

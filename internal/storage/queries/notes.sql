@@ -12,6 +12,12 @@ FROM notes
 WHERE vault_id = ? AND trashed_at IS NULL AND deleted_at IS NULL
 ORDER BY name COLLATE NOCASE;
 
+-- name: ListNotesSince :many
+SELECT id, vault_id, folder_id, name, version, created_at, updated_at, change_seq
+FROM notes
+WHERE vault_id = ? AND change_seq > ? AND trashed_at IS NULL AND deleted_at IS NULL
+ORDER BY change_seq;
+
 -- name: UpdateNoteBody :execrows
 UPDATE notes
 SET body = ?, version = version + 1, updated_at = ?, updated_by_kind = ?, updated_by_user = ?, updated_by_token = ?, change_seq = ?

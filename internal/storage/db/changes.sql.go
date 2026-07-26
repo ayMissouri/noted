@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const getChangeSeq = `-- name: GetChangeSeq :one
+SELECT seq FROM change_counter WHERE id = 1
+`
+
+func (q *Queries) GetChangeSeq(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getChangeSeq)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
 const nextChangeSeq = `-- name: NextChangeSeq :one
 UPDATE change_counter SET seq = seq + 1 WHERE id = 1
 RETURNING seq

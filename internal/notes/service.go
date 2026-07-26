@@ -180,10 +180,28 @@ func checkVault(ctx context.Context, q *db.Queries, vaultID string, actor Actor)
 	return v, nil
 }
 
-func (s *Service) Vaults(ctx context.Context, actor Actor) ([]db.Vault, error) {
-	vaults, err := s.q.ListVaults(ctx)
+// NoteSummary is a note without its body.
+type NoteSummary struct {
+	ID        string
+	VaultID   string
+	Name      string
+	Version   int64
+	CreatedAt string
+	UpdatedAt string
+	ChangeSeq int64
+}
+
+// Vaults lists accessible vaults.
+func (s *Service) Vaults(ctx context.Context, actor Actor, since int64) ([]db.Vault, int64, error) {
+	var vaults []db.Vault
+	var err error
+	if since > 0 {
+		vaults, err = s.q.ListVaultsSince(ctx, since)
+	} else {
+		vaults, err = s.q.ListVaults(ctx)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("list vaults: %w", err)
+		return nil, 0, fmt.Errorf("list vaults: %w", err)
 	}
 	visible := vaults[:0]
 	for _, v := range vaults {
@@ -191,18 +209,43 @@ func (s *Service) Vaults(ctx context.Context, actor Actor) ([]db.Vault, error) {
 			visible = append(visible, v)
 		}
 	}
-	return visible, nil
+	cursor, err := s.q.GetChangeSeq(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read change cursor: %w", err)
+	}
+	return visible, cursor, nil
 }
 
-func (s *Service) List(ctx context.Context, vaultID string, actor Actor) ([]db.ListNotesRow, error) {
+// List lists a vault's notes.
+func (s *Service) List(ctx context.Context, vaultID string, actor Actor, since int64) ([]NoteSummary, int64, error) {
 	if _, err := checkVault(ctx, s.q, vaultID, actor); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	rows, err := s.q.ListNotes(ctx, vaultID)
+	var out []NoteSummary
+	if since > 0 {
+		rows, err := s.q.ListNotesSince(ctx, db.ListNotesSinceParams{VaultID: vaultID, ChangeSeq: since})
+		if err != nil {
+			return nil, 0, fmt.Errorf("list notes: %w", err)
+		}
+		for _, r := range rows {
+			out = append(out, NoteSummary{ID: r.ID, VaultID: r.VaultID, Name: r.Name, Version: r.Version,
+				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq})
+		}
+	} else {
+		rows, err := s.q.ListNotes(ctx, vaultID)
+		if err != nil {
+			return nil, 0, fmt.Errorf("list notes: %w", err)
+		}
+		for _, r := range rows {
+			out = append(out, NoteSummary{ID: r.ID, VaultID: r.VaultID, Name: r.Name, Version: r.Version,
+				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, ChangeSeq: r.ChangeSeq})
+		}
+	}
+	cursor, err := s.q.GetChangeSeq(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list notes: %w", err)
+		return nil, 0, fmt.Errorf("read change cursor: %w", err)
 	}
-	return rows, nil
+	return out, cursor, nil
 }
 
 func (s *Service) Get(ctx context.Context, id string, actor Actor) (db.Note, error) {

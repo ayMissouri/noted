@@ -11,6 +11,11 @@ SELECT * FROM vaults
 WHERE deleted_at IS NULL
 ORDER BY name COLLATE NOCASE;
 
+-- name: ListVaultsSince :many
+SELECT * FROM vaults
+WHERE change_seq > ? AND deleted_at IS NULL
+ORDER BY change_seq;
+
 -- name: RenameVault :exec
 UPDATE vaults SET name = ?, updated_at = ?, change_seq = ?
 WHERE id = ? AND deleted_at IS NULL;
