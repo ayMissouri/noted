@@ -20,6 +20,8 @@ type Config struct {
 	LogFormat string
 	// AutoMigrate applies pending migrations on boot.
 	AutoMigrate bool
+	// CORSOrigins lists urls allowed to call the API.
+	CORSOrigins []string
 }
 
 const (
@@ -83,6 +85,25 @@ func Load(getenv func(string) string) (*Config, error) {
 			cfg.LogFormat = strings.ToLower(v)
 		default:
 			fail("NOTED_LOG_FORMAT", v, `"text" or "json"`)
+		}
+	}
+
+	if v := getenv("NOTED_CORS_ORIGINS"); v != "" {
+		for _, raw := range strings.Split(v, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			if raw == "*" {
+				fail("NOTED_CORS_ORIGINS", raw, "an explicit comma-separated origin list; wildcards are not allowed")
+				continue
+			}
+			u, err := parseBaseURL(raw)
+			if err != nil {
+				fail("NOTED_CORS_ORIGINS", raw, err.Error())
+				continue
+			}
+			cfg.CORSOrigins = append(cfg.CORSOrigins, u.String())
 		}
 	}
 

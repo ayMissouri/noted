@@ -30,6 +30,10 @@ type env struct {
 }
 
 func newBareEnv(t *testing.T) *env {
+	return buildEnv(t, nil)
+}
+
+func buildEnv(t *testing.T, vars map[string]string) *env {
 	t.Helper()
 	sqldb, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -44,7 +48,7 @@ func newBareEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatalf("EnsureDefaultVault: %v", err)
 	}
-	cfg, err := config.Load(func(string) string { return "" })
+	cfg, err := config.Load(func(key string) string { return vars[key] })
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
@@ -114,6 +118,68 @@ func errCode(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
 	env := decode[map[string]errorBody](t, rec)
 	return env["error"].Code
+}
+
+func TestCORS(t *testing.T) {
+	e := buildEnv(t, map[string]string{"NOTED_CORS_ORIGINS": "https://app.example.com"})
+
+	preflight := func(origin string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodOptions, "/api/v1/vaults", nil)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+		req.Header.Set("Access-Control-Request-Headers", "authorization")
+		rec := httptest.NewRecorder()
+		e.srv.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := preflight("https://app.example.com")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://app.example.com" {
+		t.Errorf("allowed origin ACAO = %q, want the origin", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), "authorization") {
+		t.Errorf("allow headers = %q, want authorization", got)
+	}
+
+	if got := preflight("https://evil.example").Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("disallowed origin ACAO = %q, want empty", got)
+	}
+
+	bare := newBareEnv(t)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	rec = httptest.NewRecorder()
+	bare.srv.Handler().ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("unconfigured server ACAO = %q, want empty", got)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	e := newBareEnv(t)
+	for _, path := range []string{"/", "/healthz"} {
+		rec := e.do(t, http.MethodGet, path, "")
+		h := rec.Header()
+		if got := h.Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s X-Content-Type-Options = %q, want nosniff", path, got)
+		}
+		if got := h.Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s X-Frame-Options = %q, want DENY", path, got)
+		}
+		if got := h.Get("Referrer-Policy"); got != "no-referrer" {
+			t.Errorf("%s Referrer-Policy = %q, want no-referrer", path, got)
+		}
+		csp := h.Get("Content-Security-Policy")
+		if !strings.Contains(csp, "script-src 'self'") {
+			t.Errorf("%s CSP = %q, want script-src 'self'", path, csp)
+		}
+		if strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+			t.Errorf("%s CSP allows inline scripts: %q", path, csp)
+		}
+		if !strings.Contains(csp, "frame-ancestors 'none'") {
+			t.Errorf("%s CSP = %q, want frame-ancestors 'none'", path, csp)
+		}
+	}
 }
 
 func TestHealthz(t *testing.T) {

@@ -21,6 +21,10 @@ import (
 
 const maxBodyBytes = 10 << 20
 
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; " +
+	"frame-ancestors 'none'; form-action 'self'"
+
 type Server struct {
 	echo   *echo.Echo
 	cfg    *config.Config
@@ -39,6 +43,20 @@ func New(cfg *config.Config, logger *slog.Logger, notesSvc *notes.Service, authS
 	e.Use(s.requestLogger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.BodyLimit(maxBodyBytes))
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		ContentTypeNosniff:    "nosniff",
+		XFrameOptions:         "DENY",
+		HSTSMaxAge:            31536000,
+		ContentSecurityPolicy: contentSecurityPolicy,
+		ReferrerPolicy:        "no-referrer",
+	}))
+	if len(cfg.CORSOrigins) > 0 {
+		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+			AllowOrigins: cfg.CORSOrigins,
+			AllowHeaders: []string{echo.HeaderAuthorization, echo.HeaderContentType},
+			MaxAge:       int((12 * time.Hour).Seconds()),
+		}))
+	}
 	s.routes()
 	return s
 }

@@ -96,6 +96,16 @@ func TestLoadValidValues(t *testing.T) {
 			},
 		},
 		{
+			name: "cors origins parsed and trimmed",
+			env:  map[string]string{"NOTED_CORS_ORIGINS": " https://app.example.com , http://localhost:5173/ "},
+			check: func(t *testing.T, cfg *Config) {
+				want := []string{"https://app.example.com", "http://localhost:5173"}
+				if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != want[0] || cfg.CORSOrigins[1] != want[1] {
+					t.Errorf("CORSOrigins = %v, want %v", cfg.CORSOrigins, want)
+				}
+			},
+		},
+		{
 			name: "log settings",
 			env:  map[string]string{"NOTED_LOG_LEVEL": "DEBUG", "NOTED_LOG_FORMAT": "JSON"},
 			check: func(t *testing.T, cfg *Config) {
@@ -154,6 +164,16 @@ func TestLoadInvalidValues(t *testing.T) {
 			name:   "bad auto migrate",
 			env:    map[string]string{"NOTED_AUTO_MIGRATE": "maybe"},
 			wantIn: "NOTED_AUTO_MIGRATE",
+		},
+		{
+			name:   "cors wildcard rejected",
+			env:    map[string]string{"NOTED_CORS_ORIGINS": "*"},
+			wantIn: "wildcards",
+		},
+		{
+			name:   "cors origin with path",
+			env:    map[string]string{"NOTED_CORS_ORIGINS": "https://example.com/app"},
+			wantIn: "NOTED_CORS_ORIGINS",
 		},
 		{
 			name:   "base URL with path",
