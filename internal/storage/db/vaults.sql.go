@@ -91,3 +91,47 @@ func (q *Queries) ListVaults(ctx context.Context) ([]Vault, error) {
 	}
 	return items, nil
 }
+
+const renameVault = `-- name: RenameVault :exec
+UPDATE vaults SET name = ?, updated_at = ?, change_seq = ?
+WHERE id = ? AND deleted_at IS NULL
+`
+
+type RenameVaultParams struct {
+	Name      string
+	UpdatedAt string
+	ChangeSeq int64
+	ID        string
+}
+
+func (q *Queries) RenameVault(ctx context.Context, arg RenameVaultParams) error {
+	_, err := q.db.ExecContext(ctx, renameVault,
+		arg.Name,
+		arg.UpdatedAt,
+		arg.ChangeSeq,
+		arg.ID,
+	)
+	return err
+}
+
+const softDeleteVault = `-- name: SoftDeleteVault :exec
+UPDATE vaults SET deleted_at = ?, updated_at = ?, change_seq = ?
+WHERE id = ? AND deleted_at IS NULL
+`
+
+type SoftDeleteVaultParams struct {
+	DeletedAt *string
+	UpdatedAt string
+	ChangeSeq int64
+	ID        string
+}
+
+func (q *Queries) SoftDeleteVault(ctx context.Context, arg SoftDeleteVaultParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteVault,
+		arg.DeletedAt,
+		arg.UpdatedAt,
+		arg.ChangeSeq,
+		arg.ID,
+	)
+	return err
+}

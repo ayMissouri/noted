@@ -16,11 +16,12 @@ import (
 )
 
 var (
-	ErrNotFound        = errors.New("note not found")
-	ErrVaultNotFound   = errors.New("vault not found")
-	ErrVersionConflict = errors.New("note changed since the version you read")
-	ErrNameTaken       = errors.New("a note with that name already exists here")
-	ErrInvalidName     = errors.New("invalid note name")
+	ErrNotFound         = errors.New("note not found")
+	ErrVaultNotFound    = errors.New("vault not found")
+	ErrVersionConflict  = errors.New("note changed since the version you read")
+	ErrNameTaken        = errors.New("a note with that name already exists here")
+	ErrInvalidName      = errors.New("invalid note name")
+	ErrInvalidVaultName = errors.New("vault names are 1 to 100 characters")
 )
 
 const (
@@ -48,7 +49,7 @@ func NewService(sqldb *sql.DB) *Service {
 	return &Service{sqldb: sqldb, q: db.New(sqldb)}
 }
 
-// EnsureDefaultVault returns the first vault, creating one with a root folder if none exist.
+// EnsureDefaultVault returns the first vault, creating an unowned one if none exist.
 func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 	vaults, err := s.q.ListVaults(ctx)
 	if err != nil {
@@ -57,10 +58,21 @@ func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 	if len(vaults) > 0 {
 		return vaults[0], nil
 	}
+	return s.createVault(ctx, "Notes", nil)
+}
 
+func (s *Service) CreateVault(ctx context.Context, name string, actor Actor) (db.Vault, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 100 {
+		return db.Vault{}, ErrInvalidVaultName
+	}
+	return s.createVault(ctx, name, actor.UserID)
+}
+
+func (s *Service) createVault(ctx context.Context, name string, owner *string) (db.Vault, error) {
 	tx, err := s.sqldb.BeginTx(ctx, nil)
 	if err != nil {
-		return db.Vault{}, fmt.Errorf("create default vault: %w", err)
+		return db.Vault{}, fmt.Errorf("create vault: %w", err)
 	}
 	defer tx.Rollback()
 	qtx := s.q.WithTx(tx)
@@ -72,12 +84,12 @@ func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 	}
 	seq, err := qtx.NextChangeSeq(ctx)
 	if err != nil {
-		return db.Vault{}, fmt.Errorf("create default vault: %w", err)
+		return db.Vault{}, fmt.Errorf("create vault: %w", err)
 	}
 	if err := qtx.CreateVault(ctx, db.CreateVaultParams{
-		ID: vaultID, Name: "Notes", CreatedAt: now, UpdatedAt: now, ChangeSeq: seq,
+		ID: vaultID, OwnerID: owner, Name: name, CreatedAt: now, UpdatedAt: now, ChangeSeq: seq,
 	}); err != nil {
-		return db.Vault{}, fmt.Errorf("create default vault: %w", err)
+		return db.Vault{}, fmt.Errorf("create vault: %w", err)
 	}
 
 	folderID, err := newID()
@@ -94,10 +106,55 @@ func (s *Service) EnsureDefaultVault(ctx context.Context) (db.Vault, error) {
 		return db.Vault{}, fmt.Errorf("create root folder: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return db.Vault{}, fmt.Errorf("create default vault: %w", err)
+	vault, err := qtx.GetVault(ctx, vaultID)
+	if err != nil {
+		return db.Vault{}, fmt.Errorf("create vault: %w", err)
 	}
-	return db.Vault{ID: vaultID, Name: "Notes", CreatedAt: now, UpdatedAt: now, ChangeSeq: seq}, nil
+	if err := tx.Commit(); err != nil {
+		return db.Vault{}, fmt.Errorf("create vault: %w", err)
+	}
+	return vault, nil
+}
+
+func (s *Service) RenameVault(ctx context.Context, id, name string, actor Actor) (db.Vault, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 100 {
+		return db.Vault{}, ErrInvalidVaultName
+	}
+	if _, err := checkVault(ctx, s.q, id, actor); err != nil {
+		return db.Vault{}, err
+	}
+	seq, err := s.q.NextChangeSeq(ctx)
+	if err != nil {
+		return db.Vault{}, fmt.Errorf("rename vault: %w", err)
+	}
+	if err := s.q.RenameVault(ctx, db.RenameVaultParams{
+		Name: name, UpdatedAt: timestamp(), ChangeSeq: seq, ID: id,
+	}); err != nil {
+		return db.Vault{}, fmt.Errorf("rename vault: %w", err)
+	}
+	vault, err := s.q.GetVault(ctx, id)
+	if err != nil {
+		return db.Vault{}, fmt.Errorf("rename vault: %w", err)
+	}
+	return vault, nil
+}
+
+func (s *Service) DeleteVault(ctx context.Context, id string, actor Actor) error {
+	if _, err := checkVault(ctx, s.q, id, actor); err != nil {
+		return err
+	}
+	seq, err := s.q.NextChangeSeq(ctx)
+	if err != nil {
+		return fmt.Errorf("delete vault: %w", err)
+	}
+	now := timestamp()
+	if err := s.q.SoftDeleteVault(ctx, db.SoftDeleteVaultParams{
+		DeletedAt: &now, UpdatedAt: now, ChangeSeq: seq, ID: id,
+	}); err != nil {
+		return fmt.Errorf("delete vault: %w", err)
+	}
+	return nil
 }
 
 // unowned vaults are open to everyone, owned vaults to their owner and admins.

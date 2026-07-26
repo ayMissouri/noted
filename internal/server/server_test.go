@@ -263,6 +263,49 @@ func TestDevicesListAndRevoke(t *testing.T) {
 	}
 }
 
+func TestVaultManagement(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.do(t, http.MethodPost, "/api/v1/vaults", `{"name":"Work"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create vault = %d: %s", rec.Code, rec.Body.String())
+	}
+	created := decode[vaultJSON](t, rec)
+
+	var owner *string
+	if err := e.sqldb.QueryRow(`SELECT owner_id FROM vaults WHERE id = ?`, created.ID).Scan(&owner); err != nil {
+		t.Fatalf("query owner: %v", err)
+	}
+	if owner == nil || *owner != e.adminID {
+		t.Errorf("owner = %v, want %s", owner, e.adminID)
+	}
+
+	rec = e.do(t, http.MethodPatch, "/api/v1/vaults/"+created.ID, `{"name":"Work notes"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename = %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := decode[vaultJSON](t, rec); got.Name != "Work notes" {
+		t.Errorf("renamed to %q, want Work notes", got.Name)
+	}
+
+	if rec := e.do(t, http.MethodPost, "/api/v1/vaults", `{"name":"   "}`); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("blank vault name = %d, want 422", rec.Code)
+	}
+
+	if rec := e.do(t, http.MethodDelete, "/api/v1/vaults/"+created.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = e.do(t, http.MethodGet, "/api/v1/vaults", "")
+	for _, v := range decode[map[string][]vaultJSON](t, rec)["vaults"] {
+		if v.ID == created.ID {
+			t.Error("deleted vault still listed")
+		}
+	}
+	if rec := e.do(t, http.MethodGet, "/api/v1/vaults/"+created.ID+"/notes", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("notes in deleted vault = %d, want 404", rec.Code)
+	}
+}
+
 func TestListVaults(t *testing.T) {
 	e := newEnv(t)
 	rec := e.do(t, http.MethodGet, "/api/v1/vaults", "")

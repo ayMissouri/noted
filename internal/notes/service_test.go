@@ -246,6 +246,46 @@ func TestVaultOwnership(t *testing.T) {
 
 func ptrTo[T any](v T) *T { return &v }
 
+func TestVaultLifecycle(t *testing.T) {
+	s, _ := testService(t)
+	ctx := context.Background()
+	seedUserAndVault(t, s, "user-a")
+	seedUserAndVault(t, s, "user-b")
+	alice, bob := actorFor("user-a"), actorFor("user-b")
+
+	v, err := s.CreateVault(ctx, "Second brain", alice)
+	if err != nil {
+		t.Fatalf("CreateVault: %v", err)
+	}
+	if v.OwnerID == nil || *v.OwnerID != "user-a" {
+		t.Errorf("owner = %v, want user-a", v.OwnerID)
+	}
+	if _, err := s.Create(ctx, v.ID, "In new vault", "", alice); err != nil {
+		t.Errorf("create note in new vault: %v", err)
+	}
+
+	if _, err := s.RenameVault(ctx, v.ID, "Stolen", bob); !errors.Is(err, ErrVaultNotFound) {
+		t.Errorf("stranger rename err = %v, want ErrVaultNotFound", err)
+	}
+	renamed, err := s.RenameVault(ctx, v.ID, "Second brain v2", alice)
+	if err != nil || renamed.Name != "Second brain v2" {
+		t.Errorf("rename = %q, %v", renamed.Name, err)
+	}
+	if _, err := s.CreateVault(ctx, "", alice); !errors.Is(err, ErrInvalidVaultName) {
+		t.Errorf("blank name err = %v, want ErrInvalidVaultName", err)
+	}
+
+	if err := s.DeleteVault(ctx, v.ID, bob); !errors.Is(err, ErrVaultNotFound) {
+		t.Errorf("stranger delete err = %v, want ErrVaultNotFound", err)
+	}
+	if err := s.DeleteVault(ctx, v.ID, alice); err != nil {
+		t.Fatalf("DeleteVault: %v", err)
+	}
+	if _, err := s.Create(ctx, v.ID, "Ghost", "", alice); !errors.Is(err, ErrVaultNotFound) {
+		t.Errorf("create in deleted vault err = %v, want ErrVaultNotFound", err)
+	}
+}
+
 func TestListSortsByName(t *testing.T) {
 	s, vaultID := testService(t)
 	ctx := context.Background()

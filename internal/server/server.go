@@ -66,6 +66,7 @@ var domainErrors = []struct {
 	{notes.ErrVersionConflict, http.StatusConflict, "version_conflict"},
 	{notes.ErrNameTaken, http.StatusConflict, "name_taken"},
 	{notes.ErrInvalidName, http.StatusUnprocessableEntity, "invalid_name"},
+	{notes.ErrInvalidVaultName, http.StatusUnprocessableEntity, "invalid_vault_name"},
 	{auth.ErrSetupComplete, http.StatusConflict, "setup_complete"},
 	{auth.ErrUsernameTaken, http.StatusConflict, "username_taken"},
 	{auth.ErrEmailTaken, http.StatusConflict, "email_taken"},
