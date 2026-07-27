@@ -184,7 +184,7 @@ ALTER TABLE p_new RENAME TO p;`
 func TestMigrateFkOffDetectsDanglingReferences(t *testing.T) {
 	db := testDB(t)
 	fsys := mig(map[string]string{
-		"0001_parent.sql": `CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id)); INSERT INTO p (id) VALUES (1); INSERT INTO c (id, p_id) VALUES (1, 1);`,
+		"0001_parent.sql":      `CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id)); INSERT INTO p (id) VALUES (1); INSERT INTO c (id, p_id) VALUES (1, 1);`,
 		"0002_break.fkoff.sql": `DELETE FROM p;`,
 	})
 	_, err := Migrate(context.Background(), db, fsys)

@@ -22,7 +22,7 @@ type Config struct {
 	AutoMigrate bool
 	// CORSOrigins lists urls allowed to call the API.
 	CORSOrigins []string
-	ServerName string
+	ServerName  string
 }
 
 const (
