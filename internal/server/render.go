@@ -18,7 +18,7 @@ func (s *Server) handleRender(c *echo.Context) error {
 	if req.Markdown == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "markdown is required")
 	}
-	html, err := s.render.Render([]byte(*req.Markdown))
+	html, err := s.render.Render([]byte(*req.Markdown), nil)
 	if err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (s *Server) handleNoteHTML(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	html, err := s.render.Render([]byte(note.Body))
+	html, err := s.render.Render([]byte(note.Body), nil)
 	if err != nil {
 		return err
 	}

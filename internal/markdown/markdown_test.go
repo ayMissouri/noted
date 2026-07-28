@@ -24,7 +24,7 @@ func TestGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read %s: %v", f, err)
 			}
-			got, err := r.Render(src)
+			got, err := r.Render(src, nil)
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -54,7 +54,7 @@ func TestRawHTMLNeverPassesThrough(t *testing.T) {
 		"[click](javascript:alert(1))",
 		"<iframe src=\"https://evil.example\"></iframe>",
 	} {
-		out, err := r.Render([]byte(src))
+		out, err := r.Render([]byte(src), nil)
 		if err != nil {
 			t.Fatalf("Render(%q): %v", src, err)
 		}

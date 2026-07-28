@@ -16,23 +16,25 @@ type Renderer struct {
 
 func NewRenderer() *Renderer {
 	return &Renderer{md: goldmark.New(
-		goldmark.WithExtensions(extension.GFM, extension.Footnote),
+		goldmark.WithExtensions(extension.GFM, extension.Footnote, &wikilinkExtension{}),
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 	)}
 }
 
 // Render converts a full note body (frontmatter included) to HTML. Raw HTML never passes through.
-func (r *Renderer) Render(src []byte) ([]byte, error) {
+func (r *Renderer) Render(src []byte, resolver Resolver) ([]byte, error) {
 	_, body := SplitFrontmatter(src)
+	pc := parser.NewContext()
+	if resolver != nil {
+		pc.Set(resolverKey, resolver)
+	}
 	var buf bytes.Buffer
-	if err := r.md.Convert(body, &buf); err != nil {
+	if err := r.md.Convert(body, &buf, parser.WithContext(pc)); err != nil {
 		return nil, fmt.Errorf("render markdown: %w", err)
 	}
 	return buf.Bytes(), nil
 }
 
-// SplitFrontmatter separates a leading YAML frontmatter block from the body.
-// Unterminated or absent frontmatter returns (nil, src) unchanged.
 func SplitFrontmatter(src []byte) (frontmatter, body []byte) {
 	lineEnd := bytes.IndexByte(src, '\n')
 	if lineEnd < 0 || trimCR(src[:lineEnd]) != "---" {
