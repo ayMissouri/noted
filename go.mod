@@ -73,4 +73,6 @@ require github.com/yuin/goldmark v1.8.2
 
 require golang.org/x/crypto v0.54.0
 
+require github.com/google/go-cmp v0.7.0
+
 tool github.com/sqlc-dev/sqlc/cmd/sqlc

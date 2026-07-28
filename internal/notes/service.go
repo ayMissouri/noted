@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
+	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/storage/db"
 )
 
@@ -43,10 +45,52 @@ var System = Actor{Kind: KindSystem}
 type Service struct {
 	sqldb *sql.DB
 	q     *db.Queries
+	md    *markdown.Renderer
 }
 
-func NewService(sqldb *sql.DB) *Service {
-	return &Service{sqldb: sqldb, q: db.New(sqldb)}
+func NewService(sqldb *sql.DB, md *markdown.Renderer) *Service {
+	return &Service{sqldb: sqldb, q: db.New(sqldb), md: md}
+}
+
+func (s *Service) writeLinks(ctx context.Context, q *db.Queries, noteID, body string) error {
+	if err := q.DeleteNoteLinks(ctx, noteID); err != nil {
+		return fmt.Errorf("clear note links: %w", err)
+	}
+	for i, l := range s.md.LinksIn([]byte(body)) {
+		err := q.InsertLink(ctx, db.InsertLinkParams{
+			SourceNoteID: noteID, Ord: int64(i), Kind: l.Kind,
+			TargetRaw: l.Target, Heading: l.Heading,
+		})
+		if err != nil {
+			return fmt.Errorf("insert note link: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) Resolver(ctx context.Context, vaultID string) markdown.Resolver {
+	return &vaultResolver{ctx: ctx, q: s.q, vaultID: vaultID}
+}
+
+type vaultResolver struct {
+	ctx     context.Context
+	q       *db.Queries
+	vaultID string
+}
+
+func (r *vaultResolver) ResolveWikilink(target, heading string, embed bool) (string, bool) {
+	if target == "" {
+		return "#" + url.PathEscape(heading), heading != ""
+	}
+	id, err := r.q.ResolveNoteName(r.ctx, db.ResolveNoteNameParams{VaultID: r.vaultID, Name: target})
+	if err != nil {
+		return "", false
+	}
+	href := "/notes/" + id
+	if heading != "" {
+		href += "#" + url.PathEscape(heading)
+	}
+	return href, true
 }
 
 // EnsureDefaultVault returns the first vault, creating an unowned one if none exist.
@@ -411,6 +455,9 @@ func (s *Service) Create(ctx context.Context, vaultID, name, body string, actor 
 	}); err != nil {
 		return db.Note{}, fmt.Errorf("snapshot note version: %w", err)
 	}
+	if err := s.writeLinks(ctx, qtx, id, body); err != nil {
+		return db.Note{}, err
+	}
 
 	note, err := qtx.GetNote(ctx, id)
 	if err != nil {
@@ -465,6 +512,9 @@ func (s *Service) Update(ctx context.Context, id string, baseVersion int64, body
 		SavedAt: now, ActorKind: actor.Kind, ActorUser: actor.UserID, ActorToken: actor.TokenID, ID: id,
 	}); err != nil {
 		return db.Note{}, fmt.Errorf("snapshot note version: %w", err)
+	}
+	if err := s.writeLinks(ctx, qtx, id, body); err != nil {
+		return db.Note{}, err
 	}
 
 	note, err := qtx.GetNote(ctx, id)

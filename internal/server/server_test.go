@@ -44,7 +44,8 @@ func buildEnv(t *testing.T, vars map[string]string) *env {
 	if _, err := storage.Migrate(context.Background(), sqldb, storage.Migrations()); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	svc := notes.NewService(sqldb)
+	renderer := markdown.NewRenderer()
+	svc := notes.NewService(sqldb, renderer)
 	vault, err := svc.EnsureDefaultVault(context.Background())
 	if err != nil {
 		t.Fatalf("EnsureDefaultVault: %v", err)
@@ -58,7 +59,7 @@ func buildEnv(t *testing.T, vars map[string]string) *env {
 		"index.html":    &fstest.MapFile{Data: []byte("<!doctype html><title>noted test</title>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('app')")},
 	}
-	srv := New(cfg, logger, svc, auth.NewService(sqldb), markdown.NewRenderer(), assets)
+	srv := New(cfg, logger, svc, auth.NewService(sqldb), renderer, assets)
 	return &env{srv: srv, sqldb: sqldb, vaultID: vault.ID}
 }
 
@@ -778,6 +779,41 @@ func TestVaultTombstoneInStream(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("deleted vault missing from since stream: %+v", inc.Vaults)
+	}
+}
+
+func TestWikilinksResolveInRenderedNotes(t *testing.T) {
+	e := newEnv(t)
+
+	rec := e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes", `{"name":"Target","body":"# Target"}`)
+	target := decode[noteJSON](t, rec)
+	rec = e.do(t, http.MethodPost, "/api/v1/vaults/"+e.vaultID+"/notes",
+		`{"name":"Source","body":"[[Target]] and [[Ghost]]"}`)
+	source := decode[noteJSON](t, rec)
+
+	rec = e.do(t, http.MethodGet, "/api/v1/notes/"+source.ID+"/html", "")
+	html, _ := decode[map[string]any](t, rec)["html"].(string)
+	if !strings.Contains(html, `href="/notes/`+target.ID+`"`) {
+		t.Errorf("existing note did not resolve: %s", html)
+	}
+	if !strings.Contains(html, `data-target="Ghost"`) || !strings.Contains(html, "unresolved") {
+		t.Errorf("missing note is not marked unresolved: %s", html)
+	}
+
+	rec = e.do(t, http.MethodPost, "/api/v1/render",
+		`{"markdown":"[[Target]]","vault_id":"`+e.vaultID+`"}`)
+	if got := decode[map[string]string](t, rec)["html"]; !strings.Contains(got, `href="/notes/`+target.ID+`"`) {
+		t.Errorf("preview with vault did not resolve: %s", got)
+	}
+
+	rec = e.do(t, http.MethodPost, "/api/v1/render", `{"markdown":"[[Target]]"}`)
+	if got := decode[map[string]string](t, rec)["html"]; !strings.Contains(got, "unresolved") {
+		t.Errorf("preview without vault should not resolve: %s", got)
+	}
+
+	rec = e.do(t, http.MethodPost, "/api/v1/render", `{"markdown":"[[Target]]","vault_id":"nope"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("render against unknown vault = %d, want 404", rec.Code)
 	}
 }
 

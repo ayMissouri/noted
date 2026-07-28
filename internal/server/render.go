@@ -4,10 +4,13 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v5"
+
+	"github.com/ayMissouri/noted/internal/markdown"
 )
 
 type renderRequest struct {
 	Markdown *string `json:"markdown"`
+	VaultID  string  `json:"vault_id"`
 }
 
 func (s *Server) handleRender(c *echo.Context) error {
@@ -18,7 +21,17 @@ func (s *Server) handleRender(c *echo.Context) error {
 	if req.Markdown == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "markdown is required")
 	}
-	html, err := s.render.Render([]byte(*req.Markdown), nil)
+	ctx := c.Request().Context()
+
+	var resolver markdown.Resolver
+	if req.VaultID != "" {
+		if _, _, err := s.notes.List(ctx, req.VaultID, actorFrom(c), 0); err != nil {
+			return err
+		}
+		resolver = s.notes.Resolver(ctx, req.VaultID)
+	}
+
+	html, err := s.render.Render([]byte(*req.Markdown), resolver)
 	if err != nil {
 		return err
 	}
@@ -26,11 +39,12 @@ func (s *Server) handleRender(c *echo.Context) error {
 }
 
 func (s *Server) handleNoteHTML(c *echo.Context) error {
-	note, err := s.notes.Get(c.Request().Context(), c.Param("id"), actorFrom(c))
+	ctx := c.Request().Context()
+	note, err := s.notes.Get(ctx, c.Param("id"), actorFrom(c))
 	if err != nil {
 		return err
 	}
-	html, err := s.render.Render([]byte(note.Body), nil)
+	html, err := s.render.Render([]byte(note.Body), s.notes.Resolver(ctx, note.VaultID))
 	if err != nil {
 		return err
 	}

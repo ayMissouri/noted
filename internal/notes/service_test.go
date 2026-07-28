@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ayMissouri/noted/internal/markdown"
 	"github.com/ayMissouri/noted/internal/storage"
 )
 
@@ -20,7 +21,7 @@ func testService(t *testing.T) (*Service, string) {
 	if _, err := storage.Migrate(context.Background(), sqldb, storage.Migrations()); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	s := NewService(sqldb)
+	s := NewService(sqldb, markdown.NewRenderer())
 	vault, err := s.EnsureDefaultVault(context.Background())
 	if err != nil {
 		t.Fatalf("EnsureDefaultVault: %v", err)

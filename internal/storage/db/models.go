@@ -21,6 +21,14 @@ type Folder struct {
 	ChangeSeq int64
 }
 
+type Link struct {
+	SourceNoteID string
+	Ord          int64
+	Kind         string
+	TargetRaw    string
+	Heading      string
+}
+
 type Note struct {
 	ID             string
 	VaultID        string

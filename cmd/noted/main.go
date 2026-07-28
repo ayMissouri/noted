@@ -58,6 +58,7 @@ type app struct {
 	logger *slog.Logger
 	db     *sql.DB
 	notes  *notes.Service
+	render *markdown.Renderer
 }
 
 func setup() (*app, func(), error) {
@@ -86,7 +87,11 @@ func setup() (*app, func(), error) {
 		}
 	}
 	logger.Info("database ready", "path", dbPath)
-	return &app{cfg: cfg, logger: logger, db: db, notes: notes.NewService(db)}, func() { db.Close() }, nil
+	renderer := markdown.NewRenderer()
+	return &app{
+		cfg: cfg, logger: logger, db: db,
+		notes: notes.NewService(db, renderer), render: renderer,
+	}, func() { db.Close() }, nil
 }
 
 func serve() error {
@@ -104,7 +109,7 @@ func serve() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	srv := server.New(a.cfg, a.logger, a.notes, auth.NewService(a.db), markdown.NewRenderer(), web.Dist())
+	srv := server.New(a.cfg, a.logger, a.notes, auth.NewService(a.db), a.render, web.Dist())
 	return srv.Run(ctx)
 }
 

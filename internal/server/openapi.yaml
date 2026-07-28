@@ -358,6 +358,11 @@ paths:
               required: [markdown]
               properties:
                 markdown: { type: string }
+                vault_id:
+                  type: string
+                  description: >
+                    Optional. Resolves wikilinks against this vault; without it
+                    every wikilink renders as unresolved.
       responses:
         "200":
           description: Rendered HTML. Raw HTML in the input never passes through.
